@@ -9,6 +9,41 @@ func (d *DB) Migrate() {
 	ctx := context.Background()
 
 	queries := []string{
+		// Base tables (create if first deploy)
+		`CREATE TABLE IF NOT EXISTS users (
+			id BIGINT PRIMARY KEY,
+			username TEXT,
+			tz_offset INT DEFAULT 5,
+			level TEXT DEFAULT 'A2',
+			active BOOL DEFAULT TRUE,
+			created_at TIMESTAMP DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS streaks (
+			user_id BIGINT REFERENCES users(id),
+			date DATE,
+			completed BOOL DEFAULT FALSE,
+			PRIMARY KEY (user_id, date)
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS words (
+			id SERIAL PRIMARY KEY,
+			word TEXT NOT NULL UNIQUE,
+			definition TEXT,
+			example TEXT,
+			level TEXT DEFAULT 'A2',
+			created_at TIMESTAMP DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS user_words (
+			user_id BIGINT REFERENCES users(id),
+			word_id INT REFERENCES words(id),
+			seen_at TIMESTAMP DEFAULT NOW(),
+			next_review TIMESTAMP,
+			score INT DEFAULT 0,
+			PRIMARY KEY (user_id, word_id)
+		)`,
+
 		// Extend users table
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT DEFAULT ''`,
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS skip_count INT DEFAULT 0`,
@@ -52,7 +87,7 @@ func (d *DB) Migrate() {
 		`CREATE TABLE IF NOT EXISTS media_resources (
 			id SERIAL PRIMARY KEY,
 			title TEXT NOT NULL,
-			url TEXT NOT NULL,
+			url TEXT NOT NULL UNIQUE,
 			media_type TEXT DEFAULT 'video',
 			level TEXT DEFAULT 'A2',
 			topic TEXT DEFAULT '',
@@ -299,7 +334,7 @@ func (d *DB) seedMedia(ctx context.Context) {
 		_, err := d.Pool.Exec(ctx,
 			`INSERT INTO media_resources (title, url, media_type, level, topic, duration)
 			 VALUES ($1, $2, $3, $4, $5, $6)
-			 ON CONFLICT DO NOTHING`,
+			 ON CONFLICT (url) DO NOTHING`,
 			m.title, m.url, m.mediaType, m.level, m.topic, m.duration)
 		if err != nil {
 			log.Printf("Seed media '%s' warning: %v", m.title, err)
