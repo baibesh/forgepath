@@ -101,6 +101,12 @@ func (d *DB) Migrate() {
 		// Ensure unique on url for pre-existing media_resources
 		`CREATE UNIQUE INDEX IF NOT EXISTS media_resources_url_unique ON media_resources (url)`,
 
+		// Extend media_resources for smart search
+		`ALTER TABLE media_resources ADD COLUMN IF NOT EXISTS tags TEXT DEFAULT ''`,
+		`ALTER TABLE media_resources ADD COLUMN IF NOT EXISTS view_count INT DEFAULT 0`,
+		`ALTER TABLE media_resources ADD COLUMN IF NOT EXISTS has_subtitles BOOL DEFAULT FALSE`,
+		`ALTER TABLE media_resources ADD COLUMN IF NOT EXISTS description TEXT DEFAULT ''`,
+
 		// User media tracking
 		`CREATE TABLE IF NOT EXISTS user_media (
 			user_id BIGINT REFERENCES users(id),

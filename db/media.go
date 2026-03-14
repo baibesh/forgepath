@@ -2,18 +2,23 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
 type MediaResource struct {
-	ID        int
-	Title     string
-	URL       string
-	MediaType string
-	Level     string
-	Topic     string
-	Duration  string
-	Active    bool
+	ID           int
+	Title        string
+	URL          string
+	MediaType    string
+	Level        string
+	Topic        string
+	Duration     string
+	Active       bool
+	Tags         string
+	ViewCount    int
+	HasSubtitles bool
+	Description  string
 }
 
 type UserMedia struct {
@@ -28,14 +33,52 @@ type UserMedia struct {
 func (d *DB) GetUnseenMedia(userID int64, level string) (*MediaResource, error) {
 	var m MediaResource
 	err := d.Pool.QueryRow(context.Background(),
-		`SELECT mr.id, mr.title, mr.url, mr.media_type, mr.level, COALESCE(mr.topic,''), COALESCE(mr.duration,''), mr.active
+		`SELECT mr.id, mr.title, mr.url, mr.media_type, mr.level,
+		        COALESCE(mr.topic,''), COALESCE(mr.duration,''), mr.active,
+		        COALESCE(mr.tags,''), COALESCE(mr.view_count,0),
+		        COALESCE(mr.has_subtitles,false), COALESCE(mr.description,'')
 		 FROM media_resources mr
 		 WHERE mr.active = true AND mr.level = $2
 		   AND mr.id NOT IN (SELECT media_id FROM user_media WHERE user_id = $1)
-		 ORDER BY RANDOM() LIMIT 1`, userID, level,
-	).Scan(&m.ID, &m.Title, &m.URL, &m.MediaType, &m.Level, &m.Topic, &m.Duration, &m.Active)
+		 ORDER BY mr.view_count DESC, RANDOM() LIMIT 1`, userID, level,
+	).Scan(&m.ID, &m.Title, &m.URL, &m.MediaType, &m.Level, &m.Topic, &m.Duration, &m.Active,
+		&m.Tags, &m.ViewCount, &m.HasSubtitles, &m.Description)
 	if err != nil {
 		return nil, err
+	}
+	return &m, nil
+}
+
+// SearchMedia finds media matching tags/topic keywords, prioritizing popular unseen content
+func (d *DB) SearchMedia(userID int64, level string, keywords []string) (*MediaResource, error) {
+	// Build ILIKE conditions for tags and topic
+	query := `SELECT mr.id, mr.title, mr.url, mr.media_type, mr.level,
+		        COALESCE(mr.topic,''), COALESCE(mr.duration,''), mr.active,
+		        COALESCE(mr.tags,''), COALESCE(mr.view_count,0),
+		        COALESCE(mr.has_subtitles,false), COALESCE(mr.description,'')
+		 FROM media_resources mr
+		 WHERE mr.active = true AND mr.level = $1
+		   AND mr.id NOT IN (SELECT media_id FROM user_media WHERE user_id = $2)
+		   AND (`
+	args := []interface{}{level, userID}
+
+	for i, kw := range keywords {
+		if i > 0 {
+			query += " OR "
+		}
+		args = append(args, "%"+kw+"%")
+		idx := len(args)
+		query += fmt.Sprintf("mr.tags ILIKE $%d OR mr.topic ILIKE $%d OR mr.title ILIKE $%d OR mr.description ILIKE $%d", idx, idx, idx, idx)
+	}
+	query += `) ORDER BY mr.view_count DESC LIMIT 1`
+
+	var m MediaResource
+	err := d.Pool.QueryRow(context.Background(), query, args...).Scan(
+		&m.ID, &m.Title, &m.URL, &m.MediaType, &m.Level, &m.Topic, &m.Duration, &m.Active,
+		&m.Tags, &m.ViewCount, &m.HasSubtitles, &m.Description)
+	if err != nil {
+		// Fallback to any unseen media
+		return d.GetUnseenMedia(userID, level)
 	}
 	return &m, nil
 }
