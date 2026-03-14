@@ -2,6 +2,9 @@ package main
 
 import (
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	tele "gopkg.in/telebot.v3"
@@ -29,7 +32,21 @@ func main() {
 	}
 
 	bot.RegisterHandlers(b, database, cfg)
-	cron.StartScheduler(b, database, cfg)
+	cronScheduler := cron.StartScheduler(b, database, cfg)
+
+	// Graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-quit
+		log.Println("Shutting down...")
+		b.Stop()
+		cronScheduler.Stop()
+		database.Close()
+		log.Println("Shutdown complete")
+		os.Exit(0)
+	}()
 
 	log.Println("ForgePath bot started")
 	b.Start()

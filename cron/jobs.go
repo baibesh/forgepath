@@ -1,6 +1,7 @@
 package cron
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math/rand"
@@ -26,11 +27,12 @@ func NewJobs(b *tele.Bot, database *db.DB, openai *ai.OpenAIClient) *Jobs {
 func (j *Jobs) DispatchTasks() {
 	users, err := j.db.GetActiveUsers()
 	if err != nil {
-		log.Printf("Cron: error getting users: %v", err)
+		log.Printf("[cron] error getting users: %v", err)
 		return
 	}
 
 	now := time.Now().UTC()
+	log.Printf("[cron] dispatch: %d active users, UTC %s", len(users), now.Format("15:04"))
 
 	for _, user := range users {
 		localHour := (now.Hour() + user.TzOffset) % 24
@@ -39,7 +41,6 @@ func (j *Jobs) DispatchTasks() {
 		}
 		localMinute := now.Minute()
 
-		// Check state timeout (>2 hours in non-idle state)
 		j.checkStateTimeout(user.ID)
 
 		switch {
@@ -55,7 +56,6 @@ func (j *Jobs) DispatchTasks() {
 			j.safeSend(user.ID, j.sendDailyReview)
 		}
 
-		// Weekly report on Sunday at 9:00
 		if now.Weekday() == time.Sunday && localHour == 9 && localMinute < 30 {
 			j.safeSend(user.ID, j.sendWeeklyReport)
 		}
@@ -65,20 +65,25 @@ func (j *Jobs) DispatchTasks() {
 func (j *Jobs) safeSend(userID int64, fn func(int64)) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("Cron: recovered panic for user %d: %v", userID, r)
+			log.Printf("[cron][user=%d] panic: %v", userID, r)
 		}
 	}()
 	fn(userID)
 }
 
 func (j *Jobs) checkStateTimeout(userID int64) {
-	state, err := j.db.GetState(userID)
-	if err != nil || state.State == "idle" {
+	// Check updated_at in DB — clear if >2 hours stale
+	var updatedAt time.Time
+	err := j.db.Pool.QueryRow(context.Background(),
+		`SELECT updated_at FROM user_state WHERE user_id = $1 AND state != 'idle'`, userID,
+	).Scan(&updatedAt)
+	if err != nil {
 		return
 	}
-	// Auto-clear stale states (the state module doesn't track time, so we just clear non-idle)
-	// In production, we'd check updated_at, but for now we rely on the cron running every 30min
-	j.db.ClearState(userID)
+	if time.Since(updatedAt) > 2*time.Hour {
+		log.Printf("[cron][user=%d] clearing stale state (age=%s)", userID, time.Since(updatedAt).Round(time.Minute))
+		j.db.ClearState(userID)
+	}
 }
 
 func (j *Jobs) sendWordOfDay(userID int64) {
@@ -94,7 +99,7 @@ func (j *Jobs) sendWordOfDay(userID int64) {
 
 	word, err := j.db.GetRandomUnseen(userID, user.Level)
 	if err != nil {
-		log.Printf("Cron: no unseen words for user %d: %v", userID, err)
+		log.Printf("[cron][user=%d] no unseen words: %v", userID, err)
 		return
 	}
 
@@ -102,10 +107,9 @@ func (j *Jobs) sendWordOfDay(userID int64) {
 	j.db.MarkWordSeen(userID, word.ID)
 	j.db.MarkWordDone(userID)
 
-	msg := formatWordOfDayCron(word, grammar)
-	j.sendMessage(userID, msg)
+	log.Printf("[cron][user=%d] word of day: %s", userID, word.Word)
+	j.sendMessage(userID, formatWordOfDayCron(word, grammar))
 
-	// Send quiz for review words
 	reviewWords, _ := j.db.GetWordsForReview(userID, 2)
 	for _, rw := range reviewWords {
 		j.sendSimpleQuiz(userID, &rw)
@@ -142,23 +146,16 @@ func (j *Jobs) sendWritingPrompt(userID int64) {
 		"grammar_focus": grammar.TenseName,
 	})
 
-	msg := fmt.Sprintf("✍️ *Free Writing — 5 min*\n\n"+
-		"🎯 Grammar: %s\n"+
-		"🚪 %s\n\n"+
-		"*Topic:* \"%s\"\n\n"+
-		"📍 Formula: %s\n"+
-		"📍 Markers: %s\n\n"+
-		"Send your text when ready!",
-		grammar.TenseName, grammar.Anchor, topic, grammar.Formula, grammar.Markers)
-
-	j.sendMessage(userID, msg)
+	log.Printf("[cron][user=%d] writing prompt: %s", userID, topic)
+	j.sendMessage(userID, fmt.Sprintf("✍️ *Free Writing — 5 min*\n\n"+
+		"🎯 Grammar: %s\n🚪 %s\n\n*Topic:* \"%s\"\n\n📍 Formula: %s\n📍 Markers: %s\n\nSend your text when ready!",
+		grammar.TenseName, grammar.Anchor, topic, grammar.Formula, grammar.Markers))
 }
 
 func (j *Jobs) sendMediaRecommendation(userID int64) {
-	// Check if media already sent today
 	_, err := j.db.GetTodayUnsentMedia(userID)
 	if err == nil {
-		return // already sent
+		return
 	}
 
 	user, err := j.db.GetUser(userID)
@@ -166,22 +163,34 @@ func (j *Jobs) sendMediaRecommendation(userID int64) {
 		return
 	}
 
-	media, err := j.db.GetUnseenMedia(userID, user.Level)
+	// Smart media selection via AI keywords
+	grammar, _ := j.db.GetCurrentGrammarFocus(userID)
+	grammarFocus := "english"
+	todayWord := ""
+	if grammar != nil {
+		grammarFocus = grammar.TenseName
+	}
+
+	words, _ := j.db.GetUserWords(userID, 0, 1)
+	if len(words) > 0 {
+		todayWord = words[0].Word
+	}
+
+	keywords, _ := j.openai.SuggestMediaKeywords(grammarFocus, todayWord, user.Level)
+	log.Printf("[cron][user=%d] media keywords: %v", userID, keywords)
+
+	media, err := j.db.SearchMedia(userID, user.Level, keywords)
 	if err != nil {
-		log.Printf("Cron: no unseen media for user %d: %v", userID, err)
+		log.Printf("[cron][user=%d] no media: %v", userID, err)
 		return
 	}
 
 	j.db.MarkMediaSent(userID, media.ID)
 
-	msg := fmt.Sprintf("🎬 *Today's Recommendation*\n\n"+
-		"📺 \"%s\"\n"+
-		"🔗 %s\n"+
-		"⏱ %s | Level: %s\n\n"+
-		"Watch it! Task in 2 hours 📝",
-		media.Title, media.URL, media.Duration, media.Level)
-
-	j.sendMessage(userID, msg)
+	log.Printf("[cron][user=%d] media: %s", userID, media.Title)
+	j.sendMessage(userID, fmt.Sprintf("🎬 *Today's Recommendation*\n\n"+
+		"📺 \"%s\"\n🔗 %s\n⏱ %s | Level: %s\n\nWatch it! Task in 2 hours 📝",
+		media.Title, media.URL, media.Duration, media.Level))
 }
 
 func (j *Jobs) sendMediaTask(userID int64) {
@@ -201,10 +210,13 @@ func (j *Jobs) sendMediaTask(userID int64) {
 		grammarFocus = grammar.TenseName
 	}
 
-	media, err := j.db.GetUnseenMedia(userID, "A2") // fallback to get title
-	mediaTitle := "the video"
-	if err == nil && media != nil {
-		mediaTitle = media.Title
+	// Get the media title from the media we sent today
+	var mediaTitle string
+	err = j.db.Pool.QueryRow(context.Background(),
+		`SELECT mr.title FROM user_media um JOIN media_resources mr ON mr.id = um.media_id
+		 WHERE um.user_id = $1 AND um.media_id = $2`, userID, um.MediaID).Scan(&mediaTitle)
+	if err != nil {
+		mediaTitle = "the video"
 	}
 
 	j.db.SetState(userID, "waiting_media_task", map[string]string{
@@ -212,15 +224,11 @@ func (j *Jobs) sendMediaTask(userID int64) {
 		"media_title": mediaTitle,
 	})
 
-	msg := fmt.Sprintf("📝 *Post-Media Task*\n\n"+
-		"Write 3 sentences about what you watched:\n"+
-		"Use %s\n\n"+
-		"1. What happened in the video?\n"+
-		"2. One new word or phrase you noticed\n"+
-		"3. \"I think...\" (your opinion)\n\n"+
-		"_(type your sentences)_", grammarFocus)
-
-	j.sendMessage(userID, msg)
+	log.Printf("[cron][user=%d] media task for: %s", userID, mediaTitle)
+	j.sendMessage(userID, fmt.Sprintf("📝 *Post-Media Task*\n\n"+
+		"Write 3 sentences about what you watched:\nUse %s\n\n"+
+		"1. What happened in the video?\n2. One new word or phrase you noticed\n"+
+		"3. \"I think...\" (your opinion)\n\n_(type your sentences)_", grammarFocus))
 }
 
 func (j *Jobs) sendDailyReview(userID int64) {
@@ -232,25 +240,18 @@ func (j *Jobs) sendDailyReview(userID int64) {
 	streakDays, _ := j.db.GetCurrentStreak(userID)
 	todayStreak, _ := j.db.GetTodayStreak(userID)
 
-	checkOrCross := func(done bool) string {
+	check := func(done bool) string {
 		if done {
 			return "✅"
 		}
 		return "❌"
 	}
 
-	msg := fmt.Sprintf("📊 *Daily Review*\n\n"+
-		"%s Word of the Day\n"+
-		"%s Free Writing\n"+
-		"%s Daily Review\n\n"+
-		"🔥 Streak: *%d days*\n\n"+
-		"Keep going! See you tomorrow 💪",
-		checkOrCross(todayStreak.WordDone),
-		checkOrCross(todayStreak.WritingDone),
-		checkOrCross(todayStreak.ReviewDone),
-		streakDays)
+	log.Printf("[cron][user=%d] daily review (streak=%d)", userID, streakDays)
+	j.sendMessage(userID, fmt.Sprintf("📊 *Daily Review*\n\n"+
+		"%s Word of the Day\n%s Free Writing\n%s Daily Review\n\n🔥 Streak: *%d days*\n\nKeep going! See you tomorrow 💪",
+		check(todayStreak.WordDone), check(todayStreak.WritingDone), check(todayStreak.ReviewDone), streakDays))
 
-	j.sendMessage(userID, msg)
 	j.db.MarkReviewDone(userID)
 }
 
@@ -269,18 +270,11 @@ func (j *Jobs) sendWeeklyReport(userID int64) {
 		report = fmt.Sprintf("Great week! %d words, %d writings, %d day streak!", weekly.WordsDone, weekly.WritingsDone, streakDays)
 	}
 
-	msg := fmt.Sprintf("📊 *Weekly Report*\n\n"+
-		"📖 Words: %d\n"+
-		"✍️ Writings: %d\n"+
-		"📝 Reviews: %d\n"+
-		"🔥 Streak: %d days\n\n"+
-		"%s\n\n"+
-		"New grammar week starts now! 📚",
-		weekly.WordsDone, weekly.WritingsDone, weekly.ReviewsDone, streakDays, report)
+	log.Printf("[cron][user=%d] weekly report", userID)
+	j.sendMessage(userID, fmt.Sprintf("📊 *Weekly Report*\n\n"+
+		"📖 Words: %d\n✍️ Writings: %d\n📝 Reviews: %d\n🔥 Streak: %d days\n\n%s\n\nNew grammar week starts now! 📚",
+		weekly.WordsDone, weekly.WritingsDone, weekly.ReviewsDone, streakDays, report))
 
-	j.sendMessage(userID, msg)
-
-	// Advance grammar week and reset skips
 	j.db.AdvanceGrammarWeek(userID)
 	j.db.ResetWeeklySkips()
 }
@@ -289,12 +283,11 @@ func (j *Jobs) sendMessage(userID int64, text string) {
 	recipient := &tele.User{ID: userID}
 	_, err := j.bot.Send(recipient, text, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	if err != nil {
-		log.Printf("Cron: failed to send to user %d: %v", userID, err)
+		log.Printf("[cron][user=%d] send error: %v", userID, err)
 	}
 }
 
 func (j *Jobs) sendSimpleQuiz(userID int64, word *db.Word) {
-	// Simple fill-in-blank quiz via message (no inline keyboard in cron context)
 	wrongOptions, _ := j.openai.GenerateQuizOptions(word.Word, word.Definition, 3)
 	options := []string{word.Definition}
 	options = append(options, wrongOptions...)

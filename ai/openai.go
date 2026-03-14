@@ -108,6 +108,38 @@ Stats: %d words learned, %d writings completed, %d day streak, grammar focus: %s
 	return o.complete(prompt)
 }
 
+func (o *OpenAIClient) SuggestMediaKeywords(grammarFocus, todayWord, level string) ([]string, error) {
+	if o == nil {
+		return []string{grammarFocus}, nil
+	}
+
+	prompt := fmt.Sprintf(`You help pick YouTube videos for an %s English learner.
+Their grammar focus: %s
+Today's word: %s
+
+Return 3-5 search keywords (comma-separated, lowercase) to find a relevant YouTube video.
+Focus on practical topics connected to the grammar and word.
+Example output: past simple,daily routine,telling stories
+Return ONLY the keywords, nothing else.`, level, grammarFocus, todayWord)
+
+	text, err := o.complete(prompt)
+	if err != nil {
+		return []string{grammarFocus}, nil
+	}
+
+	var keywords []string
+	for _, kw := range strings.Split(text, ",") {
+		kw = strings.TrimSpace(strings.ToLower(kw))
+		if kw != "" {
+			keywords = append(keywords, kw)
+		}
+	}
+	if len(keywords) == 0 {
+		return []string{grammarFocus}, nil
+	}
+	return keywords, nil
+}
+
 func defaultQuizOptions(definition string) []string {
 	defaults := []string{
 		"to make something bigger",

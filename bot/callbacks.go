@@ -14,24 +14,29 @@ import (
 )
 
 func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClient) {
-	// Level selection callback
 	b.Handle(&tele.Btn{Unique: "level"}, func(c tele.Context) error {
 		data := c.Data()
 		userID := c.Sender().ID
+		log.Printf("[user=%d] callback level=%s", userID, data)
+
+		// Edge case: validate level
+		validLevels := map[string]bool{"A1": true, "A2": true, "B1": true, "B2": true, "C1": true}
+		if !validLevels[data] {
+			return c.Respond(&tele.CallbackResponse{Text: "Invalid level"})
+		}
 
 		database.UpdateUserLevel(userID, data)
 		database.SetState(userID, "onboarding_tz", map[string]string{"level": data})
 
 		c.Respond(&tele.CallbackResponse{Text: "Level set to " + data})
-
-		msg := fmt.Sprintf("✅ Level: *%s*\n\nNow select your timezone:", data)
-		return c.Edit(msg, &tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: TimezoneKeyboard()})
+		return c.Edit(fmt.Sprintf("✅ Level: *%s*\n\nNow select your timezone:", data),
+			&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: TimezoneKeyboard()})
 	})
 
-	// Timezone selection callback
 	b.Handle(&tele.Btn{Unique: "tz"}, func(c tele.Context) error {
 		data := c.Data()
 		userID := c.Sender().ID
+		log.Printf("[user=%d] callback tz=%s", userID, data)
 
 		if data == "custom" {
 			database.SetState(userID, "onboarding_tz_custom", map[string]string{})
@@ -40,7 +45,7 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		}
 
 		offset, err := strconv.Atoi(data)
-		if err != nil {
+		if err != nil || offset < -12 || offset > 14 {
 			return c.Respond(&tele.CallbackResponse{Text: "Invalid timezone"})
 		}
 
@@ -48,33 +53,40 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		database.ClearState(userID)
 
 		c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Timezone: UTC+%d", offset)})
-
-		msg := fmt.Sprintf("✅ Setup complete!\n\nTimezone: UTC+%d\nYou're all set! 🚀\n\nUse the menu or /help to see commands.", offset)
-		c.Edit(msg)
+		c.Edit(fmt.Sprintf("✅ Setup complete!\n\nTimezone: UTC+%d\nYou're all set! 🚀\n\nUse the menu or /help to see commands.", offset))
 		return c.Send("Let's go! 💪", &tele.SendOptions{ReplyMarkup: MainMenu()})
 	})
 
-	// Quiz answer callback
 	b.Handle(&tele.Btn{Unique: "quiz"}, func(c tele.Context) error {
 		parts := strings.Split(c.Data(), "|")
 		if len(parts) != 2 {
 			return c.Respond(&tele.CallbackResponse{Text: "Invalid quiz data"})
 		}
 
-		wordID, _ := strconv.Atoi(parts[0])
-		selectedIdx, _ := strconv.Atoi(parts[1])
+		wordID, err := strconv.Atoi(parts[0])
+		if err != nil {
+			return c.Respond(&tele.CallbackResponse{Text: "Invalid quiz data"})
+		}
+		selectedIdx, err := strconv.Atoi(parts[1])
+		if err != nil {
+			return c.Respond(&tele.CallbackResponse{Text: "Invalid quiz data"})
+		}
+
+		userID := c.Sender().ID
+		log.Printf("[user=%d] callback quiz word=%d idx=%d", userID, wordID, selectedIdx)
 
 		word, err := database.GetWordByID(wordID)
 		if err != nil {
 			return c.Respond(&tele.CallbackResponse{Text: "Word not found"})
 		}
 
-		// Find the selected button text from the inline keyboard
+		// Edge case: message or keyboard gone
 		msg := c.Callback().Message
 		if msg == nil || msg.ReplyMarkup == nil {
 			return c.Respond(&tele.CallbackResponse{Text: "Quiz expired"})
 		}
 
+		// Edge case: index out of range
 		var selectedText string
 		if selectedIdx >= 0 && selectedIdx < len(msg.ReplyMarkup.InlineKeyboard) {
 			row := msg.ReplyMarkup.InlineKeyboard[selectedIdx]
@@ -82,10 +94,12 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 				selectedText = row[0].Text
 			}
 		}
+		if selectedText == "" {
+			return c.Respond(&tele.CallbackResponse{Text: "Quiz expired"})
+		}
 
 		isCorrect := strings.Contains(selectedText, word.Definition)
 
-		userID := c.Sender().ID
 		if isCorrect {
 			result := srs.Calculate(0, 1, 2.5, 4)
 			database.UpdateWordReview(userID, wordID, result.IntervalDays, result.EaseFactor, result.Repetitions)
@@ -104,10 +118,10 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	})
 
-	// Skip confirmation callback
 	b.Handle(&tele.Btn{Unique: "skip"}, func(c tele.Context) error {
 		data := c.Data()
 		userID := c.Sender().ID
+		log.Printf("[user=%d] callback skip=%s", userID, data)
 
 		if data == "cancel" {
 			c.Respond(&tele.CallbackResponse{Text: "Cancelled"})
@@ -125,7 +139,6 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		}
 
 		database.IncrementSkipCount(userID)
-		// Mark all today's tasks as done
 		database.MarkWordDone(userID)
 		database.MarkWritingDone(userID)
 		database.MarkReviewDone(userID)
@@ -134,9 +147,9 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		return c.Edit(fmt.Sprintf("⏭ Day skipped.\n\nSkips used: %d/2 this week.", user.SkipCount+1))
 	})
 
-	// Settings callbacks
 	b.Handle(&tele.Btn{Unique: "settings"}, func(c tele.Context) error {
 		data := c.Data()
+		log.Printf("[user=%d] callback settings=%s", c.Sender().ID, data)
 		switch data {
 		case "timezone":
 			return c.Edit("🕐 Select your timezone:", &tele.SendOptions{ReplyMarkup: TimezoneKeyboard()})
@@ -146,23 +159,26 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		return nil
 	})
 
-	// Media done callback
 	b.Handle(&tele.Btn{Unique: "media"}, func(c tele.Context) error {
 		parts := strings.Split(c.Data(), "|")
 		if len(parts) != 2 || parts[0] != "done" {
-			return nil
+			return c.Respond(&tele.CallbackResponse{Text: "Invalid data"})
 		}
 
-		mediaID, _ := strconv.Atoi(parts[1])
+		mediaID, err := strconv.Atoi(parts[1])
+		if err != nil {
+			return c.Respond(&tele.CallbackResponse{Text: "Invalid data"})
+		}
+
 		userID := c.Sender().ID
+		log.Printf("[user=%d] callback media done=%d", userID, mediaID)
 
 		database.MarkMediaTaskSent(userID, mediaID)
 		c.Respond(&tele.CallbackResponse{Text: "Great! Task incoming..."})
 
-		// Get media info for task
 		_, media, err := database.GetPendingMediaTask(userID)
 		if err != nil {
-			log.Printf("Error getting media task for user %d: %v", userID, err)
+			log.Printf("[user=%d] media task error: %v", userID, err)
 			return c.Edit("✅ Marked as watched!")
 		}
 
@@ -177,8 +193,7 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 			"media_title": media.Title,
 		})
 
-		taskMsg := FormatMediaTask(media, grammarFocus)
 		c.Edit("✅ Marked as watched!")
-		return c.Send(taskMsg, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+		return c.Send(FormatMediaTask(media, grammarFocus), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	})
 }

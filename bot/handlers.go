@@ -17,80 +17,71 @@ import (
 func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 	openaiClient := ai.NewOpenAIClient(cfg.OpenAIKey)
 
-	// /start — onboarding or welcome back
 	b.Handle("/start", func(c tele.Context) error {
 		user := c.Sender()
+		log.Printf("[user=%d] /start", user.ID)
+
 		if err := database.CreateUser(user.ID, user.Username, user.FirstName); err != nil {
-			log.Printf("Error creating user %d: %v", user.ID, err)
+			log.Printf("[user=%d] create error: %v", user.ID, err)
 			return c.Send("Something went wrong. Try again later.")
 		}
 
 		existing, err := database.GetUser(user.ID)
 		if err == nil && existing.Level != "" && existing.TzOffset != 0 {
-			welcome := fmt.Sprintf(
-				"Welcome back, %s! 👋\n\n"+
-					"Your level: *%s*\n"+
-					"Timezone: UTC+%d\n\n"+
-					"Use the menu below to continue learning!",
+			return c.Send(fmt.Sprintf(
+				"Welcome back, %s! 👋\n\nYour level: *%s*\nTimezone: UTC+%d\n\nUse the menu below to continue learning!",
 				user.FirstName, existing.Level, existing.TzOffset,
-			)
-			return c.Send(welcome, &tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: MainMenu()})
+			), &tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: MainMenu()})
 		}
 
-		// New user — start onboarding
 		database.SetState(user.ID, "onboarding_level", map[string]string{})
-
-		welcome := fmt.Sprintf(
-			"Hey, %s! 👋\n\n"+
-				"Welcome to *ForgePath* — your daily English learning companion.\n\n"+
-				"📖 Morning — Word of the Day + Quiz\n"+
-				"✍️ Afternoon — Free Writing (5 min)\n"+
-				"🎬 Evening — Media Recommendation\n"+
-				"📊 Night — Daily Review\n\n"+
+		return c.Send(fmt.Sprintf(
+			"Hey, %s! 👋\n\nWelcome to *ForgePath* — your daily English learning companion.\n\n"+
+				"📖 Morning — Word of the Day + Quiz\n✍️ Afternoon — Free Writing (5 min)\n"+
+				"🎬 Evening — Media Recommendation\n📊 Night — Daily Review\n\n"+
 				"Let's set you up! What's your English level?",
 			user.FirstName,
-		)
-		return c.Send(welcome, &tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: LevelSelectKeyboard()})
+		), &tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: LevelSelectKeyboard()})
 	})
 
-	// /today — show current/next task
 	b.Handle("/today", func(c tele.Context) error {
+		log.Printf("[user=%d] /today", c.Sender().ID)
 		return handleToday(c, database)
 	})
 
-	// /word — manual word of day
 	b.Handle("/word", func(c tele.Context) error {
+		log.Printf("[user=%d] /word", c.Sender().ID)
 		return handleWord(c, database, openaiClient)
 	})
 
-	// /quiz — manual quiz
 	b.Handle("/quiz", func(c tele.Context) error {
+		log.Printf("[user=%d] /quiz", c.Sender().ID)
 		return handleQuiz(c, database, openaiClient)
 	})
 
-	// /write — manual writing prompt
 	b.Handle("/write", func(c tele.Context) error {
+		log.Printf("[user=%d] /write", c.Sender().ID)
 		return handleWrite(c, database)
 	})
 
-	// /stats
 	b.Handle("/stats", func(c tele.Context) error {
+		log.Printf("[user=%d] /stats", c.Sender().ID)
 		return handleStats(c, database)
 	})
 
-	// /skip
 	b.Handle("/skip", func(c tele.Context) error {
+		log.Printf("[user=%d] /skip", c.Sender().ID)
 		return handleSkip(c, database)
 	})
 
-	// /settings
 	b.Handle("/settings", func(c tele.Context) error {
+		log.Printf("[user=%d] /settings", c.Sender().ID)
 		return c.Send("⚙️ *Settings*\n\nWhat would you like to change?",
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: SettingsKeyboard()})
 	})
 
-	// /help
 	b.Handle("/help", func(c tele.Context) error {
+		log.Printf("[user=%d] /help", c.Sender().ID)
 		return c.Send(
 			"📚 *ForgePath Help*\n\n"+
 				"*Daily Schedule:*\n"+
@@ -117,12 +108,11 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	})
 
-	// /words — learned words list
 	b.Handle("/words", func(c tele.Context) error {
+		log.Printf("[user=%d] /words", c.Sender().ID)
 		return handleWordsList(c, database)
 	})
 
-	// Reply keyboard buttons
 	b.Handle(&tele.Btn{Text: "📖 Today"}, func(c tele.Context) error {
 		return handleToday(c, database)
 	})
@@ -134,10 +124,8 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: SettingsKeyboard()})
 	})
 
-	// Callbacks
 	RegisterCallbacks(b, database, openaiClient)
 
-	// Text handler — FSM router
 	b.Handle(tele.OnText, func(c tele.Context) error {
 		return handleText(c, database, openaiClient)
 	})
@@ -163,11 +151,11 @@ func handleToday(c tele.Context, database *db.DB) error {
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	}
 
-	msg := "📋 *Today's Tasks:*\n\n" + strings.Join(tasks, "\n")
-	return c.Send(msg, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	return c.Send("📋 *Today's Tasks:*\n\n"+strings.Join(tasks, "\n"),
+		&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
-func handleWord(c tele.Context, database *db.DB, gemini *ai.OpenAIClient) error {
+func handleWord(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) error {
 	userID := c.Sender().ID
 	user, err := database.GetUser(userID)
 	if err != nil {
@@ -183,69 +171,55 @@ func handleWord(c tele.Context, database *db.DB, gemini *ai.OpenAIClient) error 
 	database.MarkWordSeen(userID, word.ID)
 	database.MarkWordDone(userID)
 
-	msg := FormatWordOfDay(word, grammar)
-
-	// Send word first
-	if err := c.Send(msg, &tele.SendOptions{ParseMode: tele.ModeMarkdown}); err != nil {
+	if err := c.Send(FormatWordOfDay(word, grammar), &tele.SendOptions{ParseMode: tele.ModeMarkdown}); err != nil {
+		log.Printf("[user=%d] send word error: %v", userID, err)
 		return err
 	}
 
-	// Then send a quiz for review words
-	return sendQuizForWord(c, database, word, gemini)
+	return sendQuizForWord(c, database, word, openaiClient)
 }
 
-func sendQuizForWord(c tele.Context, database *db.DB, word *db.Word, gemini *ai.OpenAIClient) error {
+func sendQuizForWord(c tele.Context, database *db.DB, word *db.Word, openaiClient *ai.OpenAIClient) error {
 	reps, _ := database.GetUserWordRepetitions(c.Sender().ID, word.ID)
 
-	switch {
-	case reps >= 3:
-		// Active recall: type the word
-		database.SetState(c.Sender().ID, "waiting_quiz_typing", map[string]string{
-			"word_id": fmt.Sprintf("%d", word.ID),
-			"answer":  strings.ToLower(word.Word),
-		})
-		return c.Send(FormatQuizTypeWord(word), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
-
-	case reps >= 4:
-		// Production: make a sentence
+	if reps >= 4 {
 		database.SetState(c.Sender().ID, "waiting_quiz_sentence", map[string]string{
 			"word_id": fmt.Sprintf("%d", word.ID),
 			"word":    word.Word,
 		})
 		return c.Send(FormatQuizMakeSentence(word), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
-
-	default:
-		// Fill-in-blank quiz
-		options := []string{word.Definition}
-		wrongOptions, _ := gemini.GenerateQuizOptions(word.Word, word.Definition, 3)
-		options = append(options, wrongOptions...)
-
-		// Shuffle
-		correctIdx := 0
-		rand.Shuffle(len(options), func(i, j int) {
-			options[i], options[j] = options[j], options[i]
-			if i == correctIdx {
-				correctIdx = j
-			} else if j == correctIdx {
-				correctIdx = i
-			}
-		})
-
-		// Find correct index after shuffle
-		for i, opt := range options {
-			if opt == word.Definition {
-				correctIdx = i
-				break
-			}
-		}
-
-		msg := FormatQuizFillBlank(word, options, correctIdx)
-		kb := QuizKeyboard(word.ID, options, correctIdx)
-		return c.Send(msg, &tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: kb})
 	}
+
+	if reps >= 3 {
+		database.SetState(c.Sender().ID, "waiting_quiz_typing", map[string]string{
+			"word_id": fmt.Sprintf("%d", word.ID),
+			"answer":  strings.ToLower(word.Word),
+		})
+		return c.Send(FormatQuizTypeWord(word), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	}
+
+	// Fill-in-blank quiz (reps 0-2)
+	options := []string{word.Definition}
+	wrongOptions, _ := openaiClient.GenerateQuizOptions(word.Word, word.Definition, 3)
+	options = append(options, wrongOptions...)
+
+	rand.Shuffle(len(options), func(i, j int) {
+		options[i], options[j] = options[j], options[i]
+	})
+
+	var correctIdx int
+	for i, opt := range options {
+		if opt == word.Definition {
+			correctIdx = i
+			break
+		}
+	}
+
+	return c.Send(FormatQuizFillBlank(word, options, correctIdx),
+		&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: QuizKeyboard(word.ID, options, correctIdx)})
 }
 
-func handleQuiz(c tele.Context, database *db.DB, gemini *ai.OpenAIClient) error {
+func handleQuiz(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) error {
 	userID := c.Sender().ID
 	words, err := database.GetWordsForReview(userID, 3)
 	if err != nil || len(words) == 0 {
@@ -254,8 +228,8 @@ func handleQuiz(c tele.Context, database *db.DB, gemini *ai.OpenAIClient) error 
 
 	for _, w := range words {
 		word := w
-		if err := sendQuizForWord(c, database, &word, gemini); err != nil {
-			log.Printf("Quiz error for word %d: %v", word.ID, err)
+		if err := sendQuizForWord(c, database, &word, openaiClient); err != nil {
+			log.Printf("[user=%d] quiz error word=%d: %v", userID, word.ID, err)
 		}
 	}
 	return nil
@@ -287,8 +261,7 @@ func handleWrite(c tele.Context, database *db.DB) error {
 		"grammar_focus": grammar.TenseName,
 	})
 
-	msg := FormatWritingPrompt(topic, grammar.TenseName, grammar)
-	return c.Send(msg, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	return c.Send(FormatWritingPrompt(topic, grammar.TenseName, grammar), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
 func handleStats(c tele.Context, database *db.DB) error {
@@ -299,8 +272,8 @@ func handleStats(c tele.Context, database *db.DB) error {
 	grammar, _ := database.GetCurrentGrammarFocus(userID)
 	weekly, _ := database.GetWeeklyStats(userID)
 
-	msg := FormatStats(streak, wordCount, writingCount, grammar, weekly)
-	return c.Send(msg, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	return c.Send(FormatStats(streak, wordCount, writingCount, grammar, weekly),
+		&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
 func handleSkip(c tele.Context, database *db.DB) error {
@@ -314,8 +287,8 @@ func handleSkip(c tele.Context, database *db.DB) error {
 		return c.Send("❌ You've already used both skips this week.\nKeep going! 💪")
 	}
 
-	msg := fmt.Sprintf("⏭ *Skip Today?*\n\nYou have *%d/2* skips left this week.", 2-user.SkipCount)
-	return c.Send(msg, &tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: SkipConfirmKeyboard()})
+	return c.Send(fmt.Sprintf("⏭ *Skip Today?*\n\nYou have *%d/2* skips left this week.", 2-user.SkipCount),
+		&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: SkipConfirmKeyboard()})
 }
 
 func handleWordsList(c tele.Context, database *db.DB) error {
@@ -339,30 +312,33 @@ func handleWordsList(c tele.Context, database *db.DB) error {
 	return c.Send(sb.String(), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
-// handleText routes text messages based on FSM state
 func handleText(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) error {
 	userID := c.Sender().ID
+	text := strings.TrimSpace(c.Text())
+
+	// Edge case: empty text
+	if text == "" {
+		return nil
+	}
+
 	state, err := database.GetState(userID)
 	if err != nil {
 		return nil
 	}
 
+	log.Printf("[user=%d] text in state=%s len=%d", userID, state.State, len(text))
+
 	switch state.State {
 	case "onboarding_tz_custom":
 		return handleOnboardingTzCustom(c, database)
-
 	case "waiting_writing":
 		return handleWritingSubmit(c, database, openaiClient, state)
-
 	case "waiting_quiz_typing":
 		return handleQuizTyping(c, database, state)
-
 	case "waiting_quiz_sentence":
 		return handleQuizSentence(c, database, openaiClient, state)
-
 	case "waiting_media_task":
 		return handleMediaTaskSubmit(c, database, openaiClient, state)
-
 	default:
 		return nil
 	}
@@ -403,7 +379,7 @@ func handleWritingSubmit(c tele.Context, database *db.DB, openaiClient *ai.OpenA
 
 	writingID, err := database.SaveWriting(userID, topic, grammarFocus, text, wordCount)
 	if err != nil {
-		log.Printf("Error saving writing for user %d: %v", userID, err)
+		log.Printf("[user=%d] save writing error: %v", userID, err)
 		return c.Send("Error saving your writing. Try again.")
 	}
 
@@ -420,7 +396,7 @@ func handleWritingSubmit(c tele.Context, database *db.DB, openaiClient *ai.OpenA
 
 	feedback, err := openaiClient.CheckWriting(text, grammarFocus, level)
 	if err != nil {
-		log.Printf("AI feedback error for writing %d: %v", writingID, err)
+		log.Printf("[user=%d] AI feedback error writing=%d: %v", userID, writingID, err)
 		feedback = "AI feedback is not available right now. Keep writing!"
 	}
 
@@ -439,20 +415,19 @@ func handleQuizTyping(c tele.Context, database *db.DB, state *db.UserState) erro
 	database.ClearState(userID)
 
 	if text == answer {
-		// Correct — score 5
 		result := srs.Calculate(0, 1, 2.5, 5)
 		database.UpdateWordReview(userID, wordID, result.IntervalDays, result.EaseFactor, result.Repetitions)
 		database.MarkReviewDone(userID)
 		return c.Send("✅ Correct! Great recall! 🎉")
 	}
 
-	// Wrong — score 1
 	result := srs.Calculate(0, 1, 2.5, 1)
 	database.UpdateWordReview(userID, wordID, result.IntervalDays, result.EaseFactor, result.Repetitions)
 
 	word, _ := database.GetWordByID(wordID)
 	if word != nil {
-		return c.Send(fmt.Sprintf("❌ Not quite.\n\nCorrect answer: *%s*\n(%s)\n\nYou'll see this word again soon!", escapeMarkdown(word.Word), escapeMarkdown(word.Definition)),
+		return c.Send(fmt.Sprintf("❌ Not quite.\n\nCorrect answer: *%s*\n(%s)\n\nYou'll see this word again soon!",
+			escapeMarkdown(word.Word), escapeMarkdown(word.Definition)),
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	}
 	return c.Send("❌ Not quite. You'll see this word again soon!")
@@ -472,18 +447,15 @@ func handleQuizSentence(c tele.Context, database *db.DB, openaiClient *ai.OpenAI
 		return c.Send("Write a full sentence, please!")
 	}
 
-	// Check if they used the word
 	if !strings.Contains(strings.ToLower(text), strings.ToLower(targetWord)) {
 		return c.Send(fmt.Sprintf("❌ Please use *%s* in your sentence!", escapeMarkdown(targetWord)),
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	}
 
-	// Score 4 for effort
 	result := srs.Calculate(0, 1, 2.5, 4)
 	database.UpdateWordReview(userID, wordID, result.IntervalDays, result.EaseFactor, result.Repetitions)
 	database.MarkReviewDone(userID)
 
-	// AI feedback if available
 	if openaiClient != nil {
 		feedback, err := openaiClient.CheckSentences(text, targetWord)
 		if err == nil {
@@ -515,6 +487,7 @@ func handleMediaTaskSubmit(c tele.Context, database *db.DB, openaiClient *ai.Ope
 
 	feedback, err := openaiClient.CheckSentences(text, mediaTitle)
 	if err != nil {
+		log.Printf("[user=%d] AI media feedback error: %v", userID, err)
 		return c.Send("Good job! Keep watching and writing! 💪")
 	}
 

@@ -10,7 +10,7 @@ import (
 	tele "gopkg.in/telebot.v3"
 )
 
-func StartScheduler(b *tele.Bot, database *db.DB, cfg *config.Config) {
+func StartScheduler(b *tele.Bot, database *db.DB, cfg *config.Config) *cron.Cron {
 	openaiClient := ai.NewOpenAIClient(cfg.OpenAIKey)
 
 	jobs := NewJobs(b, database, openaiClient)
@@ -20,4 +20,5 @@ func StartScheduler(b *tele.Bot, database *db.DB, cfg *config.Config) {
 
 	c.Start()
 	log.Println("Scheduler started with 30-minute dispatch cycle")
+	return c
 }
