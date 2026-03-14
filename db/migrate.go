@@ -44,6 +44,9 @@ func (d *DB) Migrate() {
 			PRIMARY KEY (user_id, word_id)
 		)`,
 
+		// Ensure unique constraint on words for ON CONFLICT
+		`CREATE UNIQUE INDEX IF NOT EXISTS words_word_unique ON words (word)`,
+
 		// Extend users table
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT DEFAULT ''`,
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS skip_count INT DEFAULT 0`,
@@ -94,6 +97,9 @@ func (d *DB) Migrate() {
 			duration TEXT DEFAULT '',
 			active BOOL DEFAULT TRUE
 		)`,
+
+		// Ensure unique on url for pre-existing media_resources
+		`CREATE UNIQUE INDEX IF NOT EXISTS media_resources_url_unique ON media_resources (url)`,
 
 		// User media tracking
 		`CREATE TABLE IF NOT EXISTS user_media (
