@@ -18,6 +18,8 @@ func main() {
 	database := db.Connect(cfg.DatabaseURL)
 	defer database.Close()
 
+	database.Migrate()
+
 	b, err := tele.NewBot(tele.Settings{
 		Token:  cfg.BotToken,
 		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
@@ -26,8 +28,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	bot.RegisterHandlers(b, database)
-	cron.StartScheduler(b, database)
+	bot.RegisterHandlers(b, database, cfg)
+	cron.StartScheduler(b, database, cfg)
 
 	log.Println("ForgePath bot started")
 	b.Start()

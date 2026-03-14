@@ -10,6 +10,7 @@ import (
 type Config struct {
 	BotToken    string
 	DatabaseURL string
+	OpenAIKey string
 }
 
 func Load() *Config {
@@ -18,6 +19,7 @@ func Load() *Config {
 	cfg := &Config{
 		BotToken:    os.Getenv("BOT_TOKEN"),
 		DatabaseURL: os.Getenv("DATABASE_URL"),
+		OpenAIKey: os.Getenv("OPENAI_API_KEY"),
 	}
 
 	if cfg.BotToken == "" {
@@ -26,6 +28,8 @@ func Load() *Config {
 	if cfg.DatabaseURL == "" {
 		log.Fatal("DATABASE_URL is required")
 	}
-
+	if cfg.OpenAIKey == "" {
+		log.Println("WARNING: OPENAI_API_KEY not set, AI features will be disabled")
+	}
 	return cfg
 }
