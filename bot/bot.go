@@ -43,6 +43,14 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 		}
 
 		existing, err := database.GetUser(user.ID)
+
+		if err == nil && !existing.Onboarded {
+			state, _ := database.GetState(user.ID)
+			if state.State != "idle" && state.State != "" {
+				database.ClearState(user.ID)
+			}
+		}
+
 		if err == nil && existing.Onboarded {
 			return c.Send(fmt.Sprintf(
 				"Welcome back, %s! %s\n\n%s %s | Level: *%s*\nTimezone: UTC+%d\n\nUse /help to see commands.",

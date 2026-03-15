@@ -77,7 +77,23 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		database.ClearState(userID)
 
 		c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Timezone: UTC+%d", offset)})
-		return c.Edit(fmt.Sprintf("\u2705 Setup complete!\n\nTimezone: UTC+%d\nYou're all set! \U0001F680\n\nUse /help to see commands.", offset))
+		c.Edit(fmt.Sprintf("\u2705 Setup complete!\n\nTimezone: UTC+%d\n\nYour first word is coming! \U0001F680", offset))
+
+		user, _ := database.GetUser(userID)
+		if user != nil {
+			word, err := database.GetRandomUnseen(userID, user.Level, user.Language)
+			if err == nil {
+				grammar, _ := database.GetCurrentGrammarFocus(userID)
+				database.MarkWordSeen(userID, word.ID)
+				database.MarkWordDone(userID, user.TzOffset)
+				c.Send(FormatWordOfDay(word, grammar), &tele.SendOptions{
+					ParseMode:   tele.ModeMarkdown,
+					ReplyMarkup: ListenKeyboard(word.ID),
+				})
+				return sendQuizForWord(c, database, word, openaiClient)
+			}
+		}
+		return nil
 	})
 
 	b.Handle(&tele.Btn{Unique: "settings"}, func(c tele.Context) error {

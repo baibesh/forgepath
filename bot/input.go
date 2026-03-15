@@ -107,8 +107,22 @@ func handleOnboardingTzCustom(c tele.Context, database *db.DB, text string) erro
 	database.SetOnboarded(userID)
 	database.ClearState(userID)
 
-	return c.Send(
-		fmt.Sprintf("\u2705 Setup complete!\n\nTimezone: UTC+%d\nYou're all set! \U0001F680\n\nUse /help to see commands.", offset))
+	c.Send(fmt.Sprintf("\u2705 Setup complete!\n\nTimezone: UTC+%d\n\nYour first word is coming! \U0001F680", offset))
+
+	user, _ := database.GetUser(userID)
+	if user != nil {
+		word, err := database.GetRandomUnseen(userID, user.Level, user.Language)
+		if err == nil {
+			grammar, _ := database.GetCurrentGrammarFocus(userID)
+			database.MarkWordSeen(userID, word.ID)
+			database.MarkWordDone(userID, user.TzOffset)
+			c.Send(FormatWordOfDay(word, grammar), &tele.SendOptions{
+				ParseMode:   tele.ModeMarkdown,
+				ReplyMarkup: ListenKeyboard(word.ID),
+			})
+		}
+	}
+	return nil
 }
 
 func handleSettingsTzCustom(c tele.Context, database *db.DB, text string) error {
