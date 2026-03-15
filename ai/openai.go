@@ -51,12 +51,17 @@ Student's text:
 	return o.complete(prompt)
 }
 
-func (o *OpenAIClient) CheckSentences(sentences, mediaTitle string) (string, error) {
+func (o *OpenAIClient) CheckSentences(sentences, mediaTitle, level, language string) (string, error) {
 	if o == nil {
 		return "AI feedback is not available right now. Good job writing!", nil
 	}
 
-	prompt := fmt.Sprintf(`You are a language tutor for a Russian-speaking A2 student.
+	langName := "English"
+	if language == "de" {
+		langName = "German"
+	}
+
+	prompt := fmt.Sprintf(`You are a %s language tutor for a Russian-speaking %s student.
 They watched: "%s"
 They wrote these sentences as a post-watching task.
 
@@ -69,7 +74,7 @@ Format:
 Under 100 words.
 
 Student wrote:
-%s`, mediaTitle, sentences)
+%s`, langName, level, mediaTitle, sentences)
 
 	return o.complete(prompt)
 }
@@ -207,20 +212,20 @@ func (o *OpenAIClient) SpeechToText(filePath string) (string, error) {
 
 func defaultQuizOptions(definition, language string) []string {
 	defaults := []string{
-		"увеличить",
-		"радоваться",
-		"бежать быстро",
+		"увеличить", "радоваться", "бежать быстро",
+		"запомнить", "согласиться", "потерять надежду",
+		"пробовать", "исчезнуть", "собирать вместе",
 	}
 	if language == "de" {
 		defaults = []string{
-			"vergrößern",
-			"sich freuen",
-			"schnell laufen",
+			"vergrößern", "sich freuen", "schnell laufen",
+			"vergessen", "zustimmen", "verschwinden",
+			"versuchen", "zusammen sammeln", "sich entscheiden",
 		}
 	}
 	var result []string
 	for _, d := range defaults {
-		if d != definition {
+		if d != definition && len(result) < 3 {
 			result = append(result, d)
 		}
 	}

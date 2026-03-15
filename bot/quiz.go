@@ -1,11 +1,15 @@
 package bot
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 type quizEntry struct {
 	UserID     int64
 	WordID     int
 	CorrectIdx int
+	CreatedAt  time.Time
 }
 
 var (
@@ -20,16 +24,14 @@ func RegisterQuizPoll(pollID string, userID int64, wordID int, correctIdx int) {
 		UserID:     userID,
 		WordID:     wordID,
 		CorrectIdx: correctIdx,
+		CreatedAt:  time.Now(),
 	}
-	// Keep map small: remove old entries if > 1000
-	if len(quizPolls) > 1000 {
-		i := 0
-		for k := range quizPolls {
-			if i > 500 {
-				break
+	if len(quizPolls) > 500 {
+		cutoff := time.Now().Add(-2 * time.Hour)
+		for k, e := range quizPolls {
+			if e.CreatedAt.Before(cutoff) {
+				delete(quizPolls, k)
 			}
-			delete(quizPolls, k)
-			i++
 		}
 	}
 }

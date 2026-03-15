@@ -76,8 +76,8 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		database.SetOnboarded(userID)
 		database.ClearState(userID)
 
-		c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Timezone: UTC+%d", offset)})
-		c.Edit(fmt.Sprintf("\u2705 Setup complete!\n\nTimezone: UTC+%d\n\nYour first word is coming! \U0001F680", offset))
+		c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Timezone: %s", FormatUTCOffset(offset))})
+		c.Edit(fmt.Sprintf("\u2705 Setup complete!\n\nTimezone: %s\n\nYour first word is coming! \U0001F680", FormatUTCOffset(offset)))
 
 		user, _ := database.GetUser(userID)
 		if user != nil {
@@ -163,8 +163,8 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		}
 
 		database.UpdateUserTimezone(userID, offset)
-		c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Timezone: UTC+%d", offset)})
-		return c.Edit(fmt.Sprintf("\u2705 Timezone changed to UTC+%d!", offset))
+		c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Timezone: %s", FormatUTCOffset(offset))})
+		return c.Edit(fmt.Sprintf("\u2705 Timezone changed to %s!", FormatUTCOffset(offset)))
 	})
 
 	b.Handle(&tele.Btn{Unique: "quiz"}, func(c tele.Context) error {
@@ -207,10 +207,7 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		}
 
 		user, _ := database.GetUser(userID)
-		tzOffset := 5
-		if user != nil {
-			tzOffset = user.TzOffset
-		}
+		tzOffset := userTzOffset(user)
 
 		reps, interval, ease, _ := database.GetUserWordSRS(userID, wordID)
 		isCorrect := strings.Contains(selectedText, word.Definition)
@@ -287,10 +284,7 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		}
 
 		grammar, _ := database.GetCurrentGrammarFocus(userID)
-		grammarFocus := "Past Simple"
-		if grammar != nil {
-			grammarFocus = grammar.TenseName
-		}
+		grammarFocus := GrammarTenseName(grammar)
 
 		database.SetState(userID, "waiting_media_task", map[string]string{
 			"media_id":    fmt.Sprintf("%d", mediaID),

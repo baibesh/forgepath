@@ -10,6 +10,7 @@ import (
 	"github.com/baibesh/forgepath/config"
 	"github.com/baibesh/forgepath/content"
 	"github.com/baibesh/forgepath/db"
+	"github.com/baibesh/forgepath/srs"
 )
 
 func SetBotCommands(b *tele.Bot) {
@@ -53,10 +54,10 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 
 		if err == nil && existing.Onboarded {
 			return c.Send(fmt.Sprintf(
-				"Welcome back, %s! %s\n\n%s %s | Level: *%s*\nTimezone: UTC+%d\n\nUse /help to see commands.",
+				"Welcome back, %s! %s\n\n%s %s | Level: *%s*\nTimezone: %s\n\nUse /help to see commands.",
 				user.FirstName, content.LanguageFlag(existing.Language),
 				content.LanguageFlag(existing.Language), content.LanguageName(existing.Language),
-				existing.Level, existing.TzOffset,
+				existing.Level, FormatUTCOffset(existing.TzOffset),
 			), &tele.SendOptions{
 				ParseMode:   tele.ModeMarkdown,
 				ReplyMarkup: &tele.ReplyMarkup{RemoveKeyboard: true},
@@ -89,6 +90,17 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 		if state.State == "idle" {
 			return c.Send("Nothing to cancel.")
 		}
+
+		if state.State == "waiting_quiz_typing" || state.State == "waiting_quiz_sentence" {
+			var wordID int
+			fmt.Sscanf(state.Context["word_id"], "%d", &wordID)
+			if wordID > 0 {
+				reps, interval, ease, _ := database.GetUserWordSRS(userID, wordID)
+				result := srs.Calculate(reps, interval, ease, 2)
+				database.UpdateWordReview(userID, wordID, result.IntervalDays, result.EaseFactor, result.Repetitions)
+			}
+		}
+
 		database.ClearState(userID)
 		return c.Send("\u2705 Cancelled. You can start a new task anytime.")
 	})

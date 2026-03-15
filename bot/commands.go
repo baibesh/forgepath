@@ -14,13 +14,34 @@ import (
 	"github.com/baibesh/forgepath/srs"
 )
 
-func handleToday(c tele.Context, database *db.DB) error {
-	userID := c.Sender().ID
-	user, err := database.GetUser(userID)
+func requireOnboarded(c tele.Context, database *db.DB) (*db.User, error) {
+	user, err := database.GetUser(c.Sender().ID)
 	if err != nil {
-		return c.Send("Please /start first!")
+		c.Send("Please /start first!")
+		return nil, err
 	}
-	streak, _ := database.GetTodayStreak(userID, user.TzOffset)
+	if !user.Onboarded {
+		c.Send("Please complete setup with /start first!")
+		return nil, fmt.Errorf("not onboarded")
+	}
+	return user, nil
+}
+
+func warnActiveState(c tele.Context, database *db.DB) bool {
+	state, _ := database.GetState(c.Sender().ID)
+	if state.State != "idle" && state.State != "" {
+		c.Send("You have an active task. Use /cancel to cancel it first, or continue where you left off.")
+		return true
+	}
+	return false
+}
+
+func handleToday(c tele.Context, database *db.DB) error {
+	user, err := requireOnboarded(c, database)
+	if err != nil {
+		return nil
+	}
+	streak, _ := database.GetTodayStreak(user.ID, user.TzOffset)
 
 	var tasks []string
 	if !streak.WordDone {
@@ -43,26 +64,29 @@ func handleToday(c tele.Context, database *db.DB) error {
 }
 
 func handleWord(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) error {
-	userID := c.Sender().ID
-	user, err := database.GetUser(userID)
+	user, err := requireOnboarded(c, database)
 	if err != nil {
-		return c.Send("Please /start first!")
+		return nil
 	}
 
-	word, err := database.GetRandomUnseen(userID, user.Level, user.Language)
+	if warnActiveState(c, database) {
+		return nil
+	}
+
+	word, err := database.GetRandomUnseen(user.ID, user.Level, user.Language)
 	if err != nil {
 		return c.Send("No new words available right now. You've learned them all! \U0001F389")
 	}
 
-	grammar, _ := database.GetCurrentGrammarFocus(userID)
-	database.MarkWordSeen(userID, word.ID)
-	database.MarkWordDone(userID, user.TzOffset)
+	grammar, _ := database.GetCurrentGrammarFocus(user.ID)
+	database.MarkWordSeen(user.ID, word.ID)
+	database.MarkWordDone(user.ID, user.TzOffset)
 
 	if err := c.Send(FormatWordOfDay(word, grammar), &tele.SendOptions{
 		ParseMode:   tele.ModeMarkdown,
 		ReplyMarkup: ListenKeyboard(word.ID),
 	}); err != nil {
-		log.Printf("[user=%d] send word error: %v", userID, err)
+		log.Printf("[user=%d] send word error: %v", user.ID, err)
 		return err
 	}
 
@@ -88,6 +112,10 @@ func sendQuizForWord(c tele.Context, database *db.DB, word *db.Word, openaiClien
 		return c.Send(FormatQuizTypeWord(word), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	}
 
+	return SendQuizPoll(c.Bot(), c.Recipient(), c.Sender().ID, word, openaiClient)
+}
+
+func SendQuizPoll(b *tele.Bot, recipient tele.Recipient, userID int64, word *db.Word, openaiClient *ai.OpenAIClient) error {
 	options := []string{word.Definition}
 	wrongOptions, _ := openaiClient.GenerateQuizOptions(word.Word, word.Definition, word.Language, 3)
 	options = append(options, wrongOptions...)
@@ -113,48 +141,61 @@ func sendQuizForWord(c tele.Context, database *db.DB, word *db.Word, openaiClien
 	}
 	poll.AddOptions(options...)
 
-	msg, err := poll.Send(c.Bot(), c.Recipient(), nil)
+	msg, err := poll.Send(b, recipient, nil)
 	if err != nil {
 		return err
 	}
 
 	if msg != nil && msg.Poll != nil {
-		RegisterQuizPoll(msg.Poll.ID, c.Sender().ID, word.ID, correctIdx)
+		RegisterQuizPoll(msg.Poll.ID, userID, word.ID, correctIdx)
 	}
 	return nil
 }
 
 func handleQuiz(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) error {
-	userID := c.Sender().ID
-	words, err := database.GetWordsForReview(userID, 3)
+	user, err := requireOnboarded(c, database)
+	if err != nil {
+		return nil
+	}
+
+	if warnActiveState(c, database) {
+		return nil
+	}
+
+	words, err := database.GetWordsForReview(user.ID, 3)
 	if err != nil || len(words) == 0 {
 		return c.Send("No words to review right now! Learn some with /word first.")
 	}
 
 	for _, w := range words {
 		word := w
-		if err := sendQuizForWord(c, database, &word, openaiClient); err != nil {
-			log.Printf("[user=%d] quiz error word=%d: %v", userID, word.ID, err)
+		reps, _ := database.GetUserWordRepetitions(user.ID, word.ID)
+		if reps >= 3 {
+			return sendQuizForWord(c, database, &word, openaiClient)
+		}
+		if err := SendQuizPoll(c.Bot(), c.Recipient(), user.ID, &word, openaiClient); err != nil {
+			log.Printf("[user=%d] quiz error word=%d: %v", user.ID, word.ID, err)
 		}
 	}
 	return nil
 }
 
 func handleWrite(c tele.Context, database *db.DB) error {
-	userID := c.Sender().ID
-	user, err := database.GetUser(userID)
+	user, err := requireOnboarded(c, database)
 	if err != nil {
-		return c.Send("Please /start first!")
+		return nil
 	}
 
-	grammar, _ := database.GetCurrentGrammarFocus(userID)
-	if grammar == nil {
-		grammar = db.DefaultGrammar(user.Language)
+	if warnActiveState(c, database) {
+		return nil
 	}
+
+	grammar, _ := database.GetCurrentGrammarFocus(user.ID)
+	grammar = GrammarOrDefault(grammar, user.Language)
 
 	topic := content.RandomTopic(user.Language)
 
-	database.SetState(userID, "waiting_writing", map[string]string{
+	database.SetState(user.ID, "waiting_writing", map[string]string{
 		"topic":         topic,
 		"grammar_focus": grammar.TenseName,
 	})
@@ -163,27 +204,25 @@ func handleWrite(c tele.Context, database *db.DB) error {
 }
 
 func handleStats(c tele.Context, database *db.DB) error {
-	userID := c.Sender().ID
-	user, err := database.GetUser(userID)
+	user, err := requireOnboarded(c, database)
 	if err != nil {
-		return c.Send("Please /start first!")
+		return nil
 	}
 
-	streak, _ := database.GetCurrentStreak(userID, user.TzOffset)
-	wordCount, _ := database.GetUserWordCount(userID)
-	writingCount, _ := database.GetUserWritingCount(userID)
-	grammar, _ := database.GetCurrentGrammarFocus(userID)
-	weekly, _ := database.GetWeeklyStats(userID, user.TzOffset)
+	streak, _ := database.GetCurrentStreak(user.ID, user.TzOffset)
+	wordCount, _ := database.GetUserWordCount(user.ID)
+	writingCount, _ := database.GetUserWritingCount(user.ID)
+	grammar, _ := database.GetCurrentGrammarFocus(user.ID)
+	weekly, _ := database.GetWeeklyStats(user.ID, user.TzOffset)
 
 	return c.Send(FormatStats(streak, wordCount, writingCount, grammar, weekly),
 		&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
 func handleSkip(c tele.Context, database *db.DB) error {
-	userID := c.Sender().ID
-	user, err := database.GetUser(userID)
+	user, err := requireOnboarded(c, database)
 	if err != nil {
-		return c.Send("Please /start first!")
+		return nil
 	}
 
 	if user.SkipCount >= 2 {
@@ -195,8 +234,12 @@ func handleSkip(c tele.Context, database *db.DB) error {
 }
 
 func handleWordsList(c tele.Context, database *db.DB) error {
-	userID := c.Sender().ID
-	words, err := database.GetUserWords(userID, 0, 20)
+	user, err := requireOnboarded(c, database)
+	if err != nil {
+		return nil
+	}
+
+	words, err := database.GetUserWords(user.ID, 0, 20)
 	if err != nil || len(words) == 0 {
 		return c.Send("You haven't learned any words yet. Start with /word!")
 	}
@@ -207,7 +250,7 @@ func handleWordsList(c tele.Context, database *db.DB) error {
 		sb.WriteString(fmt.Sprintf("%d. *%s* — %s\n", i+1, escapeMarkdown(w.Word), escapeMarkdown(w.Definition)))
 	}
 
-	count, _ := database.GetUserWordCount(userID)
+	count, _ := database.GetUserWordCount(user.ID)
 	if count > 20 {
 		sb.WriteString(fmt.Sprintf("\n_...and %d more_", count-20))
 	}
@@ -230,10 +273,7 @@ func handlePollAnswer(c tele.Context, database *db.DB) error {
 	wordID := entry.WordID
 
 	user, _ := database.GetUser(userID)
-	tzOffset := 5
-	if user != nil {
-		tzOffset = user.TzOffset
-	}
+	tzOffset := userTzOffset(user)
 
 	reps, interval, ease, _ := database.GetUserWordSRS(userID, wordID)
 

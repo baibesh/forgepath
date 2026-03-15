@@ -3,8 +3,6 @@ package cron
 import (
 	"fmt"
 	"log"
-	"math/rand"
-	"strings"
 	"time"
 
 	tele "gopkg.in/telebot.v3"
@@ -45,7 +43,7 @@ func (j *Jobs) DispatchTasks() {
 		j.checkStateTimeout(user.ID)
 
 		switch {
-		case localHour == 7 && localMinute < 30:
+		case localHour == 7 && localMinute >= 30:
 			j.safeSend(user, j.sendWordOfDay)
 		case localHour == 12 && localMinute < 30:
 			j.safeSend(user, j.sendWritingPrompt)
@@ -53,7 +51,7 @@ func (j *Jobs) DispatchTasks() {
 			j.safeSend(user, j.sendMediaRecommendation)
 		case localHour == 20 && localMinute < 30:
 			j.safeSend(user, j.sendMediaTask)
-		case localHour == 21 && localMinute >= 30 && localMinute < 60:
+		case localHour == 21 && localMinute >= 30:
 			j.safeSend(user, j.sendDailyReview)
 		}
 
@@ -100,11 +98,11 @@ func (j *Jobs) sendWordOfDay(user db.User) {
 	j.db.MarkWordDone(user.ID, user.TzOffset)
 
 	log.Printf("[cron][user=%d] word of day: %s", user.ID, word.Word)
-	j.sendMessage(user.ID, formatWordOfDayCron(word, grammar))
+	j.sendMessage(user.ID, bot.FormatWordOfDay(word, grammar))
 
 	reviewWords, _ := j.db.GetWordsForReview(user.ID, 2)
 	for _, rw := range reviewWords {
-		j.sendQuizWithButtons(user.ID, &rw)
+		j.sendQuizPoll(user.ID, &rw)
 	}
 }
 
@@ -115,9 +113,7 @@ func (j *Jobs) sendWritingPrompt(user db.User) {
 	}
 
 	grammar, _ := j.db.GetCurrentGrammarFocus(user.ID)
-	if grammar == nil {
-		grammar = db.DefaultGrammar(user.Language)
-	}
+	grammar = bot.GrammarOrDefault(grammar, user.Language)
 
 	topic := content.RandomTopic(user.Language)
 
@@ -140,11 +136,8 @@ func (j *Jobs) sendMediaRecommendation(user db.User) {
 	}
 
 	grammar, _ := j.db.GetCurrentGrammarFocus(user.ID)
-	grammarFocus := "english"
+	grammarFocus := bot.GrammarTenseName(grammar)
 	todayWord := ""
-	if grammar != nil {
-		grammarFocus = grammar.TenseName
-	}
 
 	words, _ := j.db.GetUserWords(user.ID, 0, 1)
 	if len(words) > 0 {
@@ -187,10 +180,7 @@ func (j *Jobs) sendMediaTask(user db.User) {
 	j.db.MarkMediaTaskSent(user.ID, um.MediaID)
 
 	grammar, _ := j.db.GetCurrentGrammarFocus(user.ID)
-	grammarFocus := "Past Simple"
-	if grammar != nil {
-		grammarFocus = grammar.TenseName
-	}
+	grammarFocus := bot.GrammarTenseName(grammar)
 
 	mediaTitle := j.db.GetMediaTitle(user.ID, um.MediaID)
 
@@ -213,7 +203,6 @@ func (j *Jobs) sendDailyReview(user db.User) {
 	}
 
 	streakDays, _ := j.db.GetCurrentStreak(user.ID, user.TzOffset)
-	todayStreak, _ := j.db.GetTodayStreak(user.ID, user.TzOffset)
 
 	check := func(done bool) string {
 		if done {
@@ -224,10 +213,9 @@ func (j *Jobs) sendDailyReview(user db.User) {
 
 	log.Printf("[cron][user=%d] daily review (streak=%d)", user.ID, streakDays)
 	j.sendMessage(user.ID, fmt.Sprintf("\U0001F4CA *Daily Review*\n\n"+
-		"%s Word of the Day\n%s Free Writing\n%s Daily Review\n\n\U0001F525 Streak: *%d days*\n\nKeep going! See you tomorrow \U0001F4AA",
-		check(todayStreak.WordDone), check(todayStreak.WritingDone), check(todayStreak.ReviewDone), streakDays))
-
-	j.db.MarkReviewDone(user.ID, user.TzOffset)
+		"%s Word of the Day\n%s Free Writing\n%s Daily Review\n\n\U0001F525 Streak: *%d days*\n\n"+
+		"Complete a /quiz to finish your day! \U0001F4AA",
+		check(streak.WordDone), check(streak.WritingDone), check(streak.ReviewDone), streakDays))
 }
 
 func (j *Jobs) sendWeeklyReport(user db.User) {
@@ -235,10 +223,7 @@ func (j *Jobs) sendWeeklyReport(user db.User) {
 	streakDays, _ := j.db.GetCurrentStreak(user.ID, user.TzOffset)
 	grammar, _ := j.db.GetCurrentGrammarFocus(user.ID)
 
-	grammarFocus := "grammar"
-	if grammar != nil {
-		grammarFocus = grammar.TenseName
-	}
+	grammarFocus := bot.GrammarTenseName(grammar)
 
 	report, err := j.openai.GenerateWeeklyReport(weekly.WordsDone, weekly.WritingsDone, streakDays, grammarFocus)
 	if err != nil {
@@ -262,62 +247,9 @@ func (j *Jobs) sendMessage(userID int64, text string) {
 	}
 }
 
-func (j *Jobs) sendQuizWithButtons(userID int64, word *db.Word) {
-	wrongOptions, _ := j.openai.GenerateQuizOptions(word.Word, word.Definition, word.Language, 3)
-	options := []string{word.Definition}
-	options = append(options, wrongOptions...)
-
-	rand.Shuffle(len(options), func(i, k int) {
-		options[i], options[k] = options[k], options[i]
-	})
-
-	var correctIdx int
-	for i, opt := range options {
-		if opt == word.Definition {
-			correctIdx = i
-			break
-		}
-	}
-
-	poll := &tele.Poll{
-		Type:          tele.PollQuiz,
-		Question:      fmt.Sprintf("What does \"%s\" mean?", word.Word),
-		CorrectOption: correctIdx,
-		Anonymous:     false,
-		Explanation:   fmt.Sprintf("%s — %s\n%s", word.Word, word.Definition, word.Example),
-	}
-	poll.AddOptions(options...)
-
+func (j *Jobs) sendQuizPoll(userID int64, word *db.Word) {
 	recipient := &tele.User{ID: userID}
-	msg, err := j.bot.Send(recipient, poll)
-	if err != nil {
+	if err := bot.SendQuizPoll(j.bot, recipient, userID, word, j.openai); err != nil {
 		log.Printf("[cron][user=%d] send quiz poll error: %v", userID, err)
-		return
 	}
-
-	if msg != nil && msg.Poll != nil {
-		bot.RegisterQuizPoll(msg.Poll.ID, userID, word.ID, correctIdx)
-	}
-}
-
-func formatWordOfDayCron(word *db.Word, grammar *db.GrammarWeek) string {
-	var sb strings.Builder
-	sb.WriteString("\U0001F4D6 *Word of the Day*\n\n")
-	sb.WriteString(fmt.Sprintf("*%s* — %s\n\n", word.Word, word.Definition))
-	sb.WriteString(fmt.Sprintf("\U0001F4A1 \"%s\"\n\n", word.Example))
-
-	if word.Construction != "" {
-		sb.WriteString(fmt.Sprintf("\U0001F4CC Construction: %s\n", word.Construction))
-	}
-	if word.Collocations != "" {
-		sb.WriteString(fmt.Sprintf("\U0001F517 Collocations: %s\n\n", word.Collocations))
-	}
-
-	if grammar != nil {
-		sb.WriteString(fmt.Sprintf("\U0001F3AF Grammar: %s — %s\n", grammar.Family, grammar.TenseName))
-		sb.WriteString(fmt.Sprintf("\U0001F6AA Anchor: %s\n", grammar.Anchor))
-		sb.WriteString(fmt.Sprintf("\U0001F4CD Markers: %s\n", grammar.Markers))
-	}
-
-	return sb.String()
 }

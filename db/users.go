@@ -34,7 +34,7 @@ func (d *DB) GetActiveUsers() ([]User, error) {
 		`SELECT id, username, COALESCE(first_name, ''), tz_offset, level,
 		        COALESCE(language, 'en'), active, COALESCE(onboarded, false),
 		        COALESCE(skip_count, 0), COALESCE(current_grammar_week, 1), created_at
-		 FROM users WHERE active = true`,
+		 FROM users WHERE active = true AND COALESCE(onboarded, false) = true`,
 	)
 	if err != nil {
 		return nil, err
