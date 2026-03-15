@@ -3,6 +3,7 @@ package bot
 import (
 	"fmt"
 
+	"github.com/baibesh/forgepath/content"
 	"github.com/baibesh/forgepath/db"
 )
 
@@ -35,4 +36,19 @@ func GrammarTenseName(grammar *db.GrammarWeek) string {
 		return grammar.TenseName
 	}
 	return "Past Simple"
+}
+
+func userLang(user *db.User) string {
+	if user != nil {
+		return user.Language
+	}
+	return "en"
+}
+
+func userMessages(user *db.User) *content.Messages {
+	return content.GetMessages(userLang(user))
+}
+
+func messagesForLang(lang string) *content.Messages {
+	return content.GetMessages(lang)
 }

@@ -54,12 +54,9 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 		}
 
 		if err == nil && existing.Onboarded {
+			m := userMessages(existing)
 			scheduleText := FormatSchedule(existing.Schedule)
-			msg := fmt.Sprintf(
-				"Hey, %s! %s\n\n"+
-					"You're learning %s, level *%s*\n\n"+
-					"*Your daily schedule:*\n%s\n\n"+
-					"Pick what you want to do!",
+			msg := m.StartReturning(
 				user.FirstName, content.LanguageFlag(existing.Language),
 				content.LanguageName(existing.Language), existing.Level,
 				scheduleText,
@@ -68,7 +65,7 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 				ParseMode:   tele.ModeMarkdown,
 				ReplyMarkup: ScheduleKeyboard(cfg.WebAppURL),
 			})
-			return c.Send("Choose an action:", &tele.SendOptions{
+			return c.Send(m.ChooseAction, &tele.SendOptions{
 				ReplyMarkup: MainKeyboard(),
 			})
 		}
@@ -76,13 +73,8 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 		database.SetState(user.ID, "onboarding_language", map[string]string{})
 		return c.Send(fmt.Sprintf(
 			"Hey, %s! \U0001F44B\n\n"+
-				"I'm *ForgePath* — I'll help you learn a language every day.\n\n"+
-				"Here's how it works:\n"+
-				"\U0001F31F Morning — a new word + quiz\n"+
-				"\u270D\uFE0F Afternoon — write a few sentences\n"+
-				"\U0001F3AC Evening — watch something fun\n"+
-				"\U0001F31B Night — see how your day went\n\n"+
-				"Let's start! What language?",
+				"What language do you want to learn?\n"+
+				"Welche Sprache möchtest du lernen?",
 			user.FirstName,
 		), &tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: LanguageSelectKeyboard()})
 	})
@@ -98,9 +90,12 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 	b.Handle("/cancel", func(c tele.Context) error {
 		userID := c.Sender().ID
 		log.Printf("[user=%d] /cancel", userID)
+		user, _ := database.GetUser(userID)
+		m := userMessages(user)
+
 		state, _ := database.GetState(userID)
 		if state.State == "idle" {
-			return c.Send("Nothing to cancel right now.")
+			return c.Send(m.CancelNothing)
 		}
 
 		if state.State == "waiting_quiz_typing" || state.State == "waiting_quiz_sentence" {
@@ -114,32 +109,20 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 		}
 
 		database.ClearState(userID)
-		return c.Send("\u2705 Done! You can start something new anytime.")
+		return c.Send(m.CancelDone)
 	})
 
 	b.Handle("/settings", func(c tele.Context) error {
-		return c.Send("\u2699\uFE0F *Settings*\n\nWhat do you want to change?",
+		user, _ := database.GetUser(c.Sender().ID)
+		m := userMessages(user)
+		return c.Send(m.SettingsTitle,
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: SettingsKeyboard()})
 	})
 
 	b.Handle("/help", func(c tele.Context) error {
-		return c.Send(
-			"\U0001F4DA *How ForgePath works*\n\n"+
-				"Every day you get:\n"+
-				"\U0001F31F *New word* at 7:30 — learn it and take a quiz\n"+
-				"\u270D\uFE0F *Writing* at 12:00 — write a few sentences on a topic\n"+
-				"\U0001F3AC *Video* at 18:00 — watch something and write about it\n"+
-				"\U0001F31B *Review* at 21:30 — see how your day went\n\n"+
-				"*Main commands:*\n"+
-				"/word — learn a new word\n"+
-				"/write — write something\n"+
-				"/quiz — practice your words\n"+
-				"/today — what's left for today\n"+
-				"/stats — your progress\n"+
-				"/skip — take a day off\n\n"+
-				"Each week focuses on one grammar topic.\n"+
-				"Don't worry about mistakes — that's how you learn! \U0001F4AA",
-			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
+		user, _ := database.GetUser(c.Sender().ID)
+		m := userMessages(user)
+		return c.Send(m.Help, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	})
 
 	RegisterCallbacks(b, database, openaiClient)

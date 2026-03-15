@@ -17,20 +17,22 @@ import (
 func requireOnboarded(c tele.Context, database *db.DB) (*db.User, error) {
 	user, err := database.GetUser(c.Sender().ID)
 	if err != nil {
-		c.Send("Hi! Type /start to get started.")
+		c.Send(content.GetMessages("en").NotStarted)
 		return nil, err
 	}
 	if !user.Onboarded {
-		c.Send("Let's finish setting up first! Type /start")
+		m := userMessages(user)
+		c.Send(m.FinishSetup)
 		return nil, fmt.Errorf("not onboarded")
 	}
 	return user, nil
 }
 
-func warnActiveState(c tele.Context, database *db.DB) bool {
+func warnActiveState(c tele.Context, database *db.DB, user *db.User) bool {
 	state, _ := database.GetState(c.Sender().ID)
 	if state.State != "idle" && state.State != "" {
-		c.Send("You're in the middle of something. Finish it or type /cancel first.")
+		m := userMessages(user)
+		c.Send(m.ActiveTask)
 		return true
 	}
 	return false
@@ -41,25 +43,25 @@ func handleToday(c tele.Context, database *db.DB) error {
 	if err != nil {
 		return nil
 	}
+	m := userMessages(user)
 	streak, _ := database.GetTodayStreak(user.ID, user.TzOffset)
 
 	var tasks []string
 	if !streak.WordDone {
-		tasks = append(tasks, "\U0001F31F New word — /word")
+		tasks = append(tasks, m.TodayWord)
 	}
 	if !streak.WritingDone {
-		tasks = append(tasks, "\u270D\uFE0F Writing — /write")
+		tasks = append(tasks, m.TodayWriting)
 	}
 	if !streak.ReviewDone {
-		tasks = append(tasks, "\U0001F9E9 Quiz — /quiz")
+		tasks = append(tasks, m.TodayQuiz)
 	}
 
 	if len(tasks) == 0 {
-		return c.Send("\u2705 *All done for today!* Great job! See you tomorrow \U0001F4AA",
-			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
+		return c.Send(m.TodayAllDone, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	}
 
-	return c.Send("*What's left today:*\n\n"+strings.Join(tasks, "\n"),
+	return c.Send(m.TodayLeft+strings.Join(tasks, "\n"),
 		&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
@@ -69,13 +71,14 @@ func handleWord(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 		return nil
 	}
 
-	if warnActiveState(c, database) {
+	if warnActiveState(c, database, user) {
 		return nil
 	}
 
+	m := userMessages(user)
 	word, err := database.GetRandomUnseen(user.ID, user.Level, user.Language)
 	if err != nil {
-		return c.Send("You've learned all available words! Amazing! \U0001F389")
+		return c.Send(m.AllWordsLearned)
 	}
 
 	grammar, _ := database.GetCurrentGrammarFocus(user.ID)
@@ -158,13 +161,14 @@ func handleQuiz(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 		return nil
 	}
 
-	if warnActiveState(c, database) {
+	if warnActiveState(c, database, user) {
 		return nil
 	}
 
+	m := userMessages(user)
 	words, err := database.GetWordsForReview(user.ID, 3)
 	if err != nil || len(words) == 0 {
-		return c.Send("Nothing to review yet! Learn some words first with /word")
+		return c.Send(m.NothingToReview)
 	}
 
 	sentTypingQuiz := false
@@ -193,7 +197,7 @@ func handleWrite(c tele.Context, database *db.DB) error {
 		return nil
 	}
 
-	if warnActiveState(c, database) {
+	if warnActiveState(c, database, user) {
 		return nil
 	}
 
@@ -232,11 +236,12 @@ func handleSkip(c tele.Context, database *db.DB) error {
 		return nil
 	}
 
+	m := userMessages(user)
 	if user.SkipCount >= 2 {
-		return c.Send("You've already taken 2 days off this week. You got this! \U0001F4AA")
+		return c.Send(m.SkipMaxReached)
 	}
 
-	return c.Send(fmt.Sprintf("*Take a day off?*\n\nYou have *%d* day(s) off left this week.", 2-user.SkipCount),
+	return c.Send(m.SkipConfirm(2-user.SkipCount),
 		&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: SkipConfirmKeyboard()})
 }
 
@@ -246,20 +251,21 @@ func handleWordsList(c tele.Context, database *db.DB) error {
 		return nil
 	}
 
+	m := userMessages(user)
 	words, err := database.GetUserWords(user.ID, 0, 20)
 	if err != nil || len(words) == 0 {
-		return c.Send("No words yet! Start with /word to learn your first one.")
+		return c.Send(m.NoWordsYet)
 	}
 
 	var sb strings.Builder
-	sb.WriteString("\U0001F4DA *Words you know:*\n\n")
+	sb.WriteString(m.WordsYouKnow)
 	for i, w := range words {
 		sb.WriteString(fmt.Sprintf("%d. *%s* — %s\n", i+1, escapeMarkdown(w.Word), escapeMarkdown(w.Definition)))
 	}
 
 	count, _ := database.GetUserWordCount(user.ID)
 	if count > 20 {
-		sb.WriteString(fmt.Sprintf("\n_...and %d more_", count-20))
+		sb.WriteString(m.AndMore(count - 20))
 	}
 
 	return c.Send(sb.String(), &tele.SendOptions{ParseMode: tele.ModeMarkdown})

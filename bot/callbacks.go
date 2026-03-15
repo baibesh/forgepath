@@ -26,15 +26,12 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 			return c.Respond(&tele.CallbackResponse{Text: "Invalid language"})
 		}
 
+		m := messagesForLang(data)
 		database.UpdateUserLanguage(userID, data)
 		database.SetState(userID, "onboarding_level", map[string]string{"language": data})
 
-		c.Respond(&tele.CallbackResponse{Text: "Language set!"})
-		langName := "English"
-		if data == "de" {
-			langName = "Deutsch"
-		}
-		return c.Edit(fmt.Sprintf("\u2705 Language: *%s*\n\nNow select your level:", langName),
+		c.Respond(&tele.CallbackResponse{Text: "OK!"})
+		return c.Edit(m.Welcome(c.Sender().FirstName),
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: LevelSelectKeyboard()})
 	})
 
@@ -48,11 +45,14 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 			return c.Respond(&tele.CallbackResponse{Text: "Invalid level"})
 		}
 
+		user, _ := database.GetUser(userID)
+		m := userMessages(user)
+
 		database.UpdateUserLevel(userID, data)
 		database.SetState(userID, "onboarding_tz", map[string]string{"level": data})
 
-		c.Respond(&tele.CallbackResponse{Text: "Level set to " + data})
-		return c.Edit(fmt.Sprintf("\u2705 Level: *%s*\n\nNow select your timezone:", data),
+		c.Respond(&tele.CallbackResponse{Text: data})
+		return c.Edit(fmt.Sprintf("\u2705 Level: *%s*\n\n%s", data, m.TimezonePrompt),
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: TimezoneKeyboard()})
 	})
 
@@ -61,10 +61,13 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		userID := c.Sender().ID
 		log.Printf("[user=%d] onboarding tz=%s", userID, data)
 
+		user, _ := database.GetUser(userID)
+		m := userMessages(user)
+
 		if data == "custom" {
 			database.SetState(userID, "onboarding_tz_custom", map[string]string{})
-			c.Respond(&tele.CallbackResponse{Text: "Type your UTC offset"})
-			return c.Edit("Type your UTC offset (e.g. 5 for UTC+5, -3 for UTC-3):")
+			c.Respond(&tele.CallbackResponse{})
+			return c.Edit(m.TzCustomPrompt)
 		}
 
 		offset, err := strconv.Atoi(data)
@@ -76,10 +79,10 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		database.SetOnboarded(userID)
 		database.ClearState(userID)
 
-		c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Timezone: %s", FormatUTCOffset(offset))})
-		c.Edit(fmt.Sprintf("\u2705 All set! Your first word is coming! \U0001F680"))
+		c.Respond(&tele.CallbackResponse{Text: FormatUTCOffset(offset)})
+		c.Edit(m.AllSet)
 
-		user, _ := database.GetUser(userID)
+		user, _ = database.GetUser(userID)
 		if user != nil {
 			word, err := database.GetRandomUnseen(userID, user.Level, user.Language)
 			if err == nil {
@@ -93,7 +96,7 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 				return sendQuizForWord(c, database, word, openaiClient)
 			}
 		}
-		return c.Send("You're all set! Use the buttons below.", &tele.SendOptions{ReplyMarkup: MainKeyboard()})
+		return c.Send(m.ChooseAction, &tele.SendOptions{ReplyMarkup: MainKeyboard()})
 	})
 
 	b.Handle(&tele.Btn{Unique: "settings"}, func(c tele.Context) error {
@@ -240,19 +243,21 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		userID := c.Sender().ID
 		log.Printf("[user=%d] skip=%s", userID, data)
 
+		user, err := database.GetUser(userID)
+		m := userMessages(user)
+
 		if data == "cancel" {
-			c.Respond(&tele.CallbackResponse{Text: "Cancelled"})
-			return c.Edit("\u2705 Good choice! Let's keep going!")
+			c.Respond(&tele.CallbackResponse{})
+			return c.Edit(m.SkipCancelled)
 		}
 
-		user, err := database.GetUser(userID)
 		if err != nil {
 			return c.Respond(&tele.CallbackResponse{Text: "Error"})
 		}
 
 		if user.SkipCount >= 2 {
-			c.Respond(&tele.CallbackResponse{Text: "No days off left"})
-			return c.Edit("You've already taken 2 days off this week.")
+			c.Respond(&tele.CallbackResponse{})
+			return c.Edit(m.SkipMaxReached)
 		}
 
 		database.IncrementSkipCount(userID)
@@ -261,8 +266,8 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		database.MarkReviewDone(userID, user.TzOffset)
 		database.ClearState(userID)
 
-		c.Respond(&tele.CallbackResponse{Text: "Day off!"})
-		return c.Edit(fmt.Sprintf("\U0001F634 Rest day! You have %d day(s) off left this week.", 2-user.SkipCount-1))
+		c.Respond(&tele.CallbackResponse{})
+		return c.Edit(m.SkipDone(2 - user.SkipCount - 1))
 	})
 
 	b.Handle(&tele.Btn{Unique: "media"}, func(c tele.Context) error {
@@ -314,17 +319,20 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 			return c.Respond(&tele.CallbackResponse{Text: "Word not found"})
 		}
 
+		user, _ := database.GetUser(userID)
+		m := userMessages(user)
+
 		if openaiClient == nil {
-			return c.Respond(&tele.CallbackResponse{Text: "Audio not available"})
+			return c.Respond(&tele.CallbackResponse{Text: m.AudioNotAvail})
 		}
 
-		c.Respond(&tele.CallbackResponse{Text: "Generating audio..."})
+		c.Respond(&tele.CallbackResponse{Text: m.AudioGenerating})
 
 		ttsText := fmt.Sprintf("%s. %s", word.Word, word.Example)
 		audioPath, err := openaiClient.TextToSpeech(ttsText)
 		if err != nil {
 			log.Printf("[user=%d] TTS error: %v", userID, err)
-			return c.Send("Audio generation failed. Try again later.")
+			return c.Send(m.AudioFailed)
 		}
 		defer os.Remove(audioPath)
 

@@ -45,10 +45,12 @@ func handleText(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 }
 
 func routeButtonCommand(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, cmd string) error {
+	user, _ := database.GetUser(c.Sender().ID)
+	m := userMessages(user)
 	state, _ := database.GetState(c.Sender().ID)
 	if state.State != "idle" && state.State != "" {
 		database.ClearState(c.Sender().ID)
-		c.Send("Previous task cancelled.")
+		c.Send(m.PrevTaskCancelled)
 	}
 
 	switch cmd {
@@ -78,36 +80,39 @@ func handleVoice(c tele.Context, b *tele.Bot, database *db.DB, openaiClient *ai.
 
 	log.Printf("[user=%d] voice message, duration=%ds", userID, voice.Duration)
 
+	user, _ := database.GetUser(userID)
+	m := userMessages(user)
+
 	if openaiClient == nil {
-		return c.Send("Voice recognition is not available right now.")
+		return c.Send(m.VoiceNotAvailable)
 	}
 
 	file, err := b.FileByID(voice.FileID)
 	if err != nil {
 		log.Printf("[user=%d] voice download error: %v", userID, err)
-		return c.Send("Could not process your voice message. Try again.")
+		return c.Send(m.VoiceError)
 	}
 
 	tmpFile, tmpErr := os.CreateTemp("", fmt.Sprintf("forgepath-voice-%d-*.ogg", userID))
 	if tmpErr != nil {
 		log.Printf("[user=%d] voice temp file error: %v", userID, tmpErr)
-		return c.Send("Could not process your voice message. Try again.")
+		return c.Send(m.VoiceError)
 	}
 	tmpPath := tmpFile.Name()
 	tmpFile.Close()
 	if err := b.Download(&file, tmpPath); err != nil {
 		log.Printf("[user=%d] voice save error: %v", userID, err)
-		return c.Send("Could not process your voice message. Try again.")
+		return c.Send(m.VoiceError)
 	}
 	defer os.Remove(tmpPath)
 
 	text, err := openaiClient.SpeechToText(tmpPath)
 	if err != nil {
 		log.Printf("[user=%d] transcription error: %v", userID, err)
-		return c.Send("Could not recognize your voice. Try sending text instead.")
+		return c.Send(m.VoiceError)
 	}
 	if text == "" {
-		return c.Send("Could not hear anything. Try again or send text.")
+		return c.Send(m.VoiceCantHear)
 	}
 
 	log.Printf("[user=%d] transcribed: %s", userID, text)
@@ -115,7 +120,7 @@ func handleVoice(c tele.Context, b *tele.Bot, database *db.DB, openaiClient *ai.
 
 	state, _ := database.GetState(userID)
 	if state.State == "idle" {
-		return c.Send("I can hear you during writing or quiz tasks! Start one with /write or /quiz")
+		return c.Send(m.VoiceIdleHint)
 	}
 
 	return processTextInput(c, database, openaiClient, state, text)
@@ -142,20 +147,22 @@ func processTextInput(c tele.Context, database *db.DB, openaiClient *ai.OpenAICl
 
 func handleOnboardingTzCustom(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, text string) error {
 	userID := c.Sender().ID
+	user, _ := database.GetUser(userID)
+	m := userMessages(user)
 
 	var offset int
 	_, err := fmt.Sscanf(text, "%d", &offset)
 	if err != nil || offset < -12 || offset > 14 {
-		return c.Send("Please enter a number between -12 and 14:")
+		return c.Send(m.TzInvalid)
 	}
 
 	database.UpdateUserTimezone(userID, offset)
 	database.SetOnboarded(userID)
 	database.ClearState(userID)
 
-	c.Send("\u2705 All set! Your first word is coming! \U0001F680")
+	c.Send(m.AllSet)
 
-	user, _ := database.GetUser(userID)
+	user, _ = database.GetUser(userID)
 	if user != nil {
 		word, err := database.GetRandomUnseen(userID, user.Level, user.Language)
 		if err == nil {
@@ -174,11 +181,13 @@ func handleOnboardingTzCustom(c tele.Context, database *db.DB, openaiClient *ai.
 
 func handleSettingsTzCustom(c tele.Context, database *db.DB, text string) error {
 	userID := c.Sender().ID
+	user, _ := database.GetUser(userID)
+	m := userMessages(user)
 
 	var offset int
 	_, err := fmt.Sscanf(text, "%d", &offset)
 	if err != nil || offset < -12 || offset > 14 {
-		return c.Send("Please enter a number between -12 and 14:")
+		return c.Send(m.TzInvalid)
 	}
 
 	database.UpdateUserTimezone(userID, offset)
@@ -189,10 +198,12 @@ func handleSettingsTzCustom(c tele.Context, database *db.DB, text string) error 
 
 func processWriting(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, state *db.UserState, text string) error {
 	userID := c.Sender().ID
+	user, _ := database.GetUser(userID)
+	m := userMessages(user)
 
 	wordCount := len(strings.Fields(text))
 	if wordCount < 5 {
-		return c.Send("That's a bit short! Try to write at least a few sentences.")
+		return c.Send(m.WritingTooShort)
 	}
 	if len(text) > 3000 {
 		text = text[:3000]
@@ -204,10 +215,9 @@ func processWriting(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClie
 	writingID, err := database.SaveWriting(userID, topic, grammarFocus, text, wordCount)
 	if err != nil {
 		log.Printf("[user=%d] save writing error: %v", userID, err)
-		return c.Send("Error saving your writing. Try again.")
+		return c.Send(m.WritingSaveError)
 	}
 
-	user, _ := database.GetUser(userID)
 	tzOffset := userTzOffset(user)
 	level := "A2"
 	language := "en"
@@ -219,7 +229,7 @@ func processWriting(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClie
 	database.MarkWritingDone(userID, tzOffset)
 	database.ClearState(userID)
 
-	c.Send(fmt.Sprintf("\u2705 Saved! (%d words)\n\nAnalyzing...", wordCount))
+	c.Send(m.WritingSaved(wordCount))
 
 	feedback, err := openaiClient.CheckWriting(text, grammarFocus, level, language)
 	if err != nil {
@@ -240,6 +250,7 @@ func processQuizTyping(c tele.Context, database *db.DB, state *db.UserState, tex
 	fmt.Sscanf(state.Context["word_id"], "%d", &wordID)
 
 	user, _ := database.GetUser(userID)
+	m := userMessages(user)
 	tzOffset := userTzOffset(user)
 
 	reps, interval, ease, _ := database.GetUserWordSRS(userID, wordID)
@@ -249,7 +260,7 @@ func processQuizTyping(c tele.Context, database *db.DB, state *db.UserState, tex
 		result := srs.Calculate(reps, interval, ease, 5)
 		database.UpdateWordReview(userID, wordID, result.IntervalDays, result.EaseFactor, result.Repetitions)
 		database.MarkReviewDone(userID, tzOffset)
-		return c.Send("\u2705 Yes! You got it! \U0001F389")
+		return c.Send(m.QuizCorrect)
 	}
 
 	result := srs.Calculate(reps, interval, ease, 1)
@@ -257,11 +268,10 @@ func processQuizTyping(c tele.Context, database *db.DB, state *db.UserState, tex
 
 	word, _ := database.GetWordByID(wordID)
 	if word != nil {
-		return c.Send(fmt.Sprintf("\u274C Close! The answer was: *%s*\n(%s)\n\nNo worries, you'll see it again!",
-			escapeMarkdown(word.Word), escapeMarkdown(word.Definition)),
+		return c.Send(m.QuizWrong(escapeMarkdown(word.Word), escapeMarkdown(word.Definition)),
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	}
-	return c.Send("\u274C Not this time. You'll see it again soon!")
+	return c.Send(m.QuizWrongSimple)
 }
 
 func processQuizSentence(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, state *db.UserState, text string) error {
@@ -271,8 +281,11 @@ func processQuizSentence(c tele.Context, database *db.DB, openaiClient *ai.OpenA
 	var wordID int
 	fmt.Sscanf(state.Context["word_id"], "%d", &wordID)
 
+	user, _ := database.GetUser(userID)
+	m := userMessages(user)
+
 	if len(text) < 5 {
-		return c.Send("Try writing a full sentence!")
+		return c.Send(m.QuizTrySentence)
 	}
 
 	if !strings.Contains(strings.ToLower(text), strings.ToLower(targetWord)) {
@@ -282,7 +295,6 @@ func processQuizSentence(c tele.Context, database *db.DB, openaiClient *ai.OpenA
 
 	database.ClearState(userID)
 
-	user, _ := database.GetUser(userID)
 	tzOffset := userTzOffset(user)
 	level := "A2"
 	language := "en"
@@ -303,23 +315,24 @@ func processQuizSentence(c tele.Context, database *db.DB, openaiClient *ai.OpenA
 		}
 	}
 
-	return c.Send("\u2705 Nice sentence! Keep it up! \U0001F4AA")
+	return c.Send(m.MediaGoodJob)
 }
 
 func processMediaTask(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, state *db.UserState, text string) error {
 	userID := c.Sender().ID
+	user, _ := database.GetUser(userID)
+	m := userMessages(user)
 
 	var mediaID int
 	fmt.Sscanf(state.Context["media_id"], "%d", &mediaID)
 	mediaTitle := state.Context["media_title"]
 
 	if len(text) < 10 {
-		return c.Send("Try to write a bit more!")
+		return c.Send(m.MediaTooShort)
 	}
 
 	database.ClearState(userID)
 
-	user, _ := database.GetUser(userID)
 	tzOffset := userTzOffset(user)
 	level := "A2"
 	language := "en"
@@ -336,16 +349,16 @@ func processMediaTask(c tele.Context, database *db.DB, openaiClient *ai.OpenAICl
 	writingID, _ := database.SaveWritingWithType(userID, topic, "", text, wordCount, "media")
 	database.MarkWritingDone(userID, tzOffset)
 
-	c.Send("\u2705 Got it! Let me check...")
+	c.Send(m.MediaGotIt)
 
 	if openaiClient == nil {
-		return c.Send("Good job! \U0001F4AA")
+		return c.Send(m.MediaGoodJob)
 	}
 
 	feedback, err := openaiClient.CheckSentences(text, mediaTitle, level, language)
 	if err != nil {
 		log.Printf("[user=%d] AI media feedback error: %v", userID, err)
-		return c.Send("Good job! \U0001F4AA")
+		return c.Send(m.MediaGoodJob)
 	}
 
 	if writingID > 0 {
