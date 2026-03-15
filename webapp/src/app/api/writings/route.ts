@@ -29,6 +29,7 @@ export async function GET(req: Request) {
       text: w.text,
       feedback: w.feedback,
       wordCount: w.word_count,
+      writingType: w.writing_type ?? "free",
       createdAt: w.created_at.toISOString(),
     })),
     total,

@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   BookOpen,
-  GraduationCap,
   PenLine,
+  Video,
   Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,8 +14,8 @@ import { cn } from "@/lib/utils";
 const items = [
   { href: "/", label: "Home", icon: LayoutDashboard },
   { href: "/words", label: "Words", icon: BookOpen },
-  { href: "/grammar", label: "Grammar", icon: GraduationCap },
   { href: "/writings", label: "Writings", icon: PenLine },
+  { href: "/media", label: "Videos", icon: Video },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

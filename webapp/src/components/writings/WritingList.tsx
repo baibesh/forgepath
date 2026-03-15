@@ -11,6 +11,7 @@ interface WritingData {
   text: string | null;
   feedback: string | null;
   wordCount: number;
+  writingType?: string;
   createdAt: string;
 }
 

@@ -5,11 +5,15 @@ import (
 )
 
 func (d *DB) SaveWriting(userID int64, topic, grammarFocus, text string, wordCount int) (int, error) {
+	return d.SaveWritingWithType(userID, topic, grammarFocus, text, wordCount, "free")
+}
+
+func (d *DB) SaveWritingWithType(userID int64, topic, grammarFocus, text string, wordCount int, writingType string) (int, error) {
 	var id int
 	err := d.Pool.QueryRow(context.Background(),
-		`INSERT INTO writings (user_id, topic, grammar_focus, text, word_count)
-		 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		userID, topic, grammarFocus, text, wordCount).Scan(&id)
+		`INSERT INTO writings (user_id, topic, grammar_focus, text, word_count, writing_type)
+		 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+		userID, topic, grammarFocus, text, wordCount, writingType).Scan(&id)
 	return id, err
 }
 
@@ -29,7 +33,7 @@ func (d *DB) GetUserWritingCount(userID int64) (int, error) {
 func (d *DB) GetRecentWritings(userID int64, limit int) ([]Writing, error) {
 	rows, err := d.Pool.Query(context.Background(),
 		`SELECT id, user_id, COALESCE(topic,''), COALESCE(grammar_focus,''), COALESCE(text,''),
-		        COALESCE(feedback,''), COALESCE(word_count,0), created_at
+		        COALESCE(feedback,''), COALESCE(word_count,0), COALESCE(writing_type,'free'), created_at
 		 FROM writings WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`, userID, limit)
 	if err != nil {
 		return nil, err
@@ -40,7 +44,7 @@ func (d *DB) GetRecentWritings(userID int64, limit int) ([]Writing, error) {
 	for rows.Next() {
 		var w Writing
 		if err := rows.Scan(&w.ID, &w.UserID, &w.Topic, &w.GrammarFocus, &w.Text,
-			&w.Feedback, &w.WordCount, &w.CreatedAt); err != nil {
+			&w.Feedback, &w.WordCount, &w.WritingType, &w.CreatedAt); err != nil {
 			return nil, err
 		}
 		writings = append(writings, w)

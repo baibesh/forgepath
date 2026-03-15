@@ -324,12 +324,21 @@ func processMediaTask(c tele.Context, database *db.DB, openaiClient *ai.OpenAICl
 	database.SaveMediaTaskResponse(userID, mediaID, text)
 	database.MarkReviewDone(userID, tzOffset)
 
+	wordCount := len(strings.Fields(text))
+	topic := fmt.Sprintf("Video: %s", mediaTitle)
+	writingID, _ := database.SaveWritingWithType(userID, topic, "", text, wordCount, "media")
+	database.MarkWritingDone(userID, tzOffset)
+
 	c.Send("\u2705 Got it! Let me check...")
 
 	feedback, err := openaiClient.CheckSentences(text, mediaTitle, level, language)
 	if err != nil {
 		log.Printf("[user=%d] AI media feedback error: %v", userID, err)
 		return c.Send("Good job! \U0001F4AA")
+	}
+
+	if writingID > 0 {
+		database.UpdateWritingFeedback(writingID, feedback)
 	}
 
 	return c.Send(feedback, &tele.SendOptions{ParseMode: tele.ModeMarkdown})

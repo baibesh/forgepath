@@ -89,6 +89,7 @@ model Writing {
   text          String?
   feedback      String?
   word_count    Int      @default(0)
+  writing_type  String   @default("free")
   created_at    DateTime @default(now())
   user          User     @relation(fields: [user_id], references: [id])
 
@@ -108,4 +109,36 @@ model GrammarWeek {
 
   @@unique([week_num, language], map: "grammar_weeks_week_lang_unique")
   @@map("grammar_weeks")
+}
+
+model MediaResource {
+  id            Int         @id @default(autoincrement())
+  title         String
+  url           String
+  media_type    String
+  level         String
+  topic         String?     @default("")
+  duration      String?     @default("")
+  active        Boolean     @default(true)
+  tags          String?     @default("")
+  view_count    Int?        @default(0)
+  has_subtitles Boolean?    @default(false)
+  description   String?     @default("")
+  language      String?     @default("en")
+  user_media    UserMedia[]
+
+  @@map("media_resources")
+}
+
+model UserMedia {
+  user_id       BigInt
+  media_id      Int
+  sent_at       DateTime      @default(now())
+  task_sent     Boolean       @default(false)
+  task_response String?       @default("")
+  completed     Boolean       @default(false)
+  media         MediaResource @relation(fields: [media_id], references: [id])
+
+  @@id([user_id, media_id])
+  @@map("user_media")
 }

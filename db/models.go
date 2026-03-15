@@ -102,5 +102,6 @@ type Writing struct {
 	Text         string
 	Feedback     string
 	WordCount    int
+	WritingType  string
 	CreatedAt    time.Time
 }

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { ChevronDown, MessageSquare } from "lucide-react";
+import { ChevronDown, MessageSquare, PenLine, Video } from "lucide-react";
 
 interface WritingData {
   id: number;
@@ -11,11 +11,13 @@ interface WritingData {
   text: string | null;
   feedback: string | null;
   wordCount: number;
+  writingType?: string;
   createdAt: string;
 }
 
 export function WritingCard({ writing }: { writing: WritingData }) {
   const [open, setOpen] = useState(false);
+  const isMedia = writing.writingType === "media";
 
   const date = new Date(writing.createdAt).toLocaleDateString("en-US", {
     month: "short",
@@ -26,8 +28,15 @@ export function WritingCard({ writing }: { writing: WritingData }) {
     <div className="bg-surface rounded-xl p-3" onClick={() => setOpen(!open)}>
       <div className="flex items-center justify-between">
         <div className="flex-1">
-          <div className="font-medium text-sm">{writing.topic || "Untitled"}</div>
-          <div className="text-xs text-text-muted flex items-center gap-2">
+          <div className="font-medium text-sm flex items-center gap-1.5">
+            {isMedia ? (
+              <Video size={14} className="text-purple-400 shrink-0" />
+            ) : (
+              <PenLine size={14} className="text-accent shrink-0" />
+            )}
+            {writing.topic || "Untitled"}
+          </div>
+          <div className="text-xs text-text-muted flex items-center gap-2 mt-0.5">
             <span>{date}</span>
             <span>{writing.wordCount} words</span>
             {writing.grammarFocus && <span>{writing.grammarFocus}</span>}

@@ -49,8 +49,6 @@ func (j *Jobs) DispatchTasks() {
 			j.safeSend(user, j.sendWritingPrompt)
 		case localHour == 18 && localMinute < 30:
 			j.safeSend(user, j.sendMediaRecommendation)
-		case localHour == 20 && localMinute < 30:
-			j.safeSend(user, j.sendMediaTask)
 		case localHour == 21 && localMinute >= 30:
 			j.safeSend(user, j.sendDailyReview)
 		}
@@ -159,40 +157,21 @@ func (j *Jobs) sendMediaRecommendation(user db.User) {
 		bot.FormatMediaRecommendation(media),
 		&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: bot.MediaDoneKeyboard(media.ID)})
 	if sendErr != nil {
-		log.Printf("[cron][user=%d] send media error: %v", user.ID, sendErr)
+		log.Printf("[cron][user=%d] send media error, trying fallback: %v", user.ID, sendErr)
+		fallback, err := j.db.GetUnseenMedia(user.ID, user.Level, user.Language)
+		if err == nil && fallback.ID != media.ID {
+			j.db.MarkMediaSent(user.ID, fallback.ID)
+			_, retryErr := j.bot.Send(recipient,
+				bot.FormatMediaRecommendation(fallback),
+				&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: bot.MediaDoneKeyboard(fallback.ID)})
+			if retryErr != nil {
+				log.Printf("[cron][user=%d] fallback media also failed: %v", user.ID, retryErr)
+			}
+		}
 	}
 }
 
-func (j *Jobs) sendMediaTask(user db.User) {
-	um, err := j.db.GetTodayUnsentMedia(user.ID, user.TzOffset)
-	if err != nil || um == nil {
-		return
-	}
-	if um.TaskSent {
-		return
-	}
 
-	j.db.MarkMediaTaskSent(user.ID, um.MediaID)
-
-	grammar, _ := j.db.GetCurrentGrammarFocus(user.ID)
-	grammarFocus := bot.GrammarTenseName(grammar)
-
-	mediaTitle := j.db.GetMediaTitle(user.ID, um.MediaID)
-
-	j.db.SetState(user.ID, "waiting_media_task", map[string]string{
-		"media_id":    fmt.Sprintf("%d", um.MediaID),
-		"media_title": mediaTitle,
-	})
-
-	log.Printf("[cron][user=%d] media task for: %s", user.ID, mediaTitle)
-	j.sendMessage(user.ID, fmt.Sprintf("\U0001F4DD *What did you think?*\n\n"+
-		"Write a few sentences about what you watched.\n\n"+
-		"For example:\n"+
-		"\u2022 What was it about?\n"+
-		"\u2022 What new word did you hear?\n"+
-		"\u2022 What do you think about it?\n\n"+
-		"Try to use *%s*!", grammarFocus))
-}
 
 func (j *Jobs) sendDailyReview(user db.User) {
 	streak, _ := j.db.GetTodayStreak(user.ID, user.TzOffset)
