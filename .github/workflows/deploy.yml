@@ -61,15 +61,23 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      - name: Deploy standalone to server
+      - name: Prepare standalone bundle
+        working-directory: webapp
+        run: |
+          cp -r .next/static .next/standalone/.next/static
+          mkdir -p .next/standalone/public
+          cp -r public/. .next/standalone/public/ 2>/dev/null || true
+
+      - name: Deploy to server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: root
           key: ${{ secrets.SERVER_SSH_KEY }}
-          source: webapp/.next/standalone/.,webapp/.next/static,webapp/public
+          source: webapp/.next/standalone/.
           target: /opt/forgepath-webapp/
-          strip_components: 1
+          strip_components: 3
+          overwrite: true
 
       - name: Restart webapp
         uses: appleboy/ssh-action@v1.0.3
@@ -80,11 +88,8 @@ jobs:
           envs: DATABASE_URL,BOT_TOKEN
           script: |
             cd /opt/forgepath-webapp
-            cp -r .next/static .next/standalone/.next/static 2>/dev/null || true
-            cp -r public .next/standalone/public 2>/dev/null || true
-            echo "DATABASE_URL=${DATABASE_URL}" > .next/standalone/.env
-            echo "BOT_TOKEN=${BOT_TOKEN}" >> .next/standalone/.env
-            cd .next/standalone
+            echo "DATABASE_URL=${DATABASE_URL}" > .env
+            echo "BOT_TOKEN=${BOT_TOKEN}" >> .env
             pm2 restart forgepath-webapp || pm2 start server.js --name forgepath-webapp
             sleep 2
             pm2 status forgepath-webapp
