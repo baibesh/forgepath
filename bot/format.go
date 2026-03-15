@@ -117,8 +117,8 @@ func FormatMediaRecommendation(media *db.MediaResource) string {
 	return fmt.Sprintf("\U0001F3AC *Today's Recommendation*\n\n"+
 		"\U0001F4FA \"%s\"\n"+
 		"\U0001F517 %s\n"+
-		"\u23F1 %s | Level: %s\n\n"+
-		"Watch it! Task in 2 hours \U0001F4DD",
+		"\u23F1 %s \\| Level: %s\n\n"+
+		"Watch it! Then press the button below \U0001F4DD",
 		escapeMarkdown(media.Title), media.URL, media.Duration, media.Level)
 }
 
@@ -161,5 +161,8 @@ func FormatDailyReview(todayWord *db.Word, streak *db.TodayStreak, streakDays in
 func escapeMarkdown(s string) string {
 	s = strings.ReplaceAll(s, "[", "\\[")
 	s = strings.ReplaceAll(s, "]", "\\]")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	s = strings.ReplaceAll(s, "`", "\\`")
+	s = strings.ReplaceAll(s, "|", "\\|")
 	return s
 }

@@ -159,9 +159,7 @@ func (j *Jobs) sendMediaRecommendation(user db.User) {
 
 	recipient := &tele.User{ID: user.ID}
 	_, sendErr := j.bot.Send(recipient,
-		fmt.Sprintf("\U0001F3AC *Today's Recommendation*\n\n"+
-			"\U0001F4FA \"%s\"\n\U0001F517 %s\n\u23F1 %s | Level: %s\n\nWatch it! Then press the button below \U0001F4DD",
-			media.Title, media.URL, media.Duration, media.Level),
+		bot.FormatMediaRecommendation(media),
 		&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: bot.MediaDoneKeyboard(media.ID)})
 	if sendErr != nil {
 		log.Printf("[cron][user=%d] send media error: %v", user.ID, sendErr)
