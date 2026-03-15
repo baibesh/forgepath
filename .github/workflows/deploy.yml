@@ -3,9 +3,10 @@ name: Build & Deploy
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
-  deploy:
+  deploy-bot:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,10 +16,9 @@ jobs:
           go-version: '1.25'
 
       - name: Build binary
-        run: |
-          GOOS=linux GOARCH=amd64 go build -o forgepath .
+        run: GOOS=linux GOARCH=amd64 go build -o forgepath .
 
-      - name: Deploy to server
+      - name: Upload binary
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -26,14 +26,16 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           source: forgepath
           target: /opt/forgepath/
+          overwrite: true
 
-      - name: Update .env and restart
+      - name: Restart bot
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: root
           key: ${{ secrets.SERVER_SSH_KEY }}
           envs: OPENAI_API_KEY
+          script_stop: true
           script: |
             cd /opt/forgepath
             grep -q '^OPENAI_API_KEY=' .env 2>/dev/null && sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=${OPENAI_API_KEY}|" .env || echo "OPENAI_API_KEY=${OPENAI_API_KEY}" >> .env
@@ -61,38 +63,54 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      - name: Prepare standalone bundle
+      - name: Pack standalone bundle
         working-directory: webapp
         run: |
           cp -r .next/static .next/standalone/.next/static
           mkdir -p .next/standalone/public
           cp -r public/. .next/standalone/public/ 2>/dev/null || true
+          tar -czf /tmp/webapp-bundle.tar.gz -C .next/standalone .
 
-      - name: Deploy to server
+      - name: Upload bundle
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: root
           key: ${{ secrets.SERVER_SSH_KEY }}
-          source: webapp/.next/standalone/.
-          target: /opt/forgepath-webapp/
-          strip_components: 3
-          overwrite: true
+          source: /tmp/webapp-bundle.tar.gz
+          target: /tmp/
+          strip_components: 2
 
-      - name: Restart webapp
+      - name: Deploy and restart
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: root
           key: ${{ secrets.SERVER_SSH_KEY }}
           envs: DATABASE_URL,BOT_TOKEN
+          script_stop: true
           script: |
+            BACKUP=/opt/forgepath-webapp-backup
+            rm -rf $BACKUP
+            cp -r /opt/forgepath-webapp $BACKUP 2>/dev/null || true
+            rm -rf /opt/forgepath-webapp/.next /opt/forgepath-webapp/server.js /opt/forgepath-webapp/node_modules /opt/forgepath-webapp/package.json
+            tar -xzf /tmp/webapp-bundle.tar.gz -C /opt/forgepath-webapp/
+            rm -f /tmp/webapp-bundle.tar.gz
             cd /opt/forgepath-webapp
             echo "DATABASE_URL=${DATABASE_URL}" > .env
             echo "BOT_TOKEN=${BOT_TOKEN}" >> .env
             pm2 restart forgepath-webapp || pm2 start server.js --name forgepath-webapp
-            sleep 2
-            pm2 status forgepath-webapp
+            sleep 3
+            if curl -sf http://localhost:3000/ > /dev/null; then
+              echo "Health check OK"
+              rm -rf $BACKUP
+            else
+              echo "Health check FAILED, rolling back"
+              rm -rf /opt/forgepath-webapp
+              mv $BACKUP /opt/forgepath-webapp
+              pm2 restart forgepath-webapp
+              exit 1
+            fi
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
