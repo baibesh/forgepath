@@ -45,7 +45,6 @@ func main() {
 		log.Println("Shutting down...")
 		b.Stop()
 		cronScheduler.Stop()
-		database.Close()
 		log.Println("Shutdown complete")
 		os.Exit(0)
 	}()

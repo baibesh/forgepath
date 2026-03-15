@@ -2,6 +2,8 @@ package db
 
 import (
 	"context"
+	"fmt"
+	"math/rand/v2"
 )
 
 func (d *DB) GetWordByID(id int) (*Word, error) {
@@ -18,15 +20,27 @@ func (d *DB) GetWordByID(id int) (*Word, error) {
 }
 
 func (d *DB) GetRandomUnseen(userID int64, level, language string) (*Word, error) {
-	var w Word
+	var count int
 	err := d.Pool.QueryRow(context.Background(),
+		`SELECT COUNT(*) FROM words w
+		 WHERE w.level = $2 AND COALESCE(w.language,'en') = $3
+		   AND w.id NOT IN (SELECT word_id FROM user_words WHERE user_id = $1)`,
+		userID, level, language).Scan(&count)
+	if err != nil || count == 0 {
+		return nil, fmt.Errorf("no unseen words")
+	}
+
+	offset := rand.IntN(count)
+
+	var w Word
+	err = d.Pool.QueryRow(context.Background(),
 		`SELECT w.id, w.word, COALESCE(w.definition,''), COALESCE(w.example,''),
 		        COALESCE(w.collocations,''), COALESCE(w.construction,''), COALESCE(w.level,'A2'),
 		        COALESCE(w.language,'en')
 		 FROM words w
 		 WHERE w.level = $2 AND COALESCE(w.language,'en') = $3
 		   AND w.id NOT IN (SELECT word_id FROM user_words WHERE user_id = $1)
-		 ORDER BY RANDOM() LIMIT 1`, userID, level, language,
+		 LIMIT 1 OFFSET $4`, userID, level, language, offset,
 	).Scan(&w.ID, &w.Word, &w.Definition, &w.Example, &w.Collocations, &w.Construction, &w.Level, &w.Language)
 	if err != nil {
 		return nil, err

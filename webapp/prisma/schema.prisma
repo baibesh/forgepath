@@ -18,6 +18,14 @@ model User {
   onboarded          Boolean     @default(false)
   skip_count         Int         @default(0)
   current_grammar_week Int       @default(1)
+  word_hour          Int         @default(7)
+  word_min           Int         @default(30)
+  writing_hour       Int         @default(12)
+  writing_min        Int         @default(0)
+  media_hour         Int         @default(18)
+  media_min          Int         @default(0)
+  review_hour        Int         @default(21)
+  review_min         Int         @default(30)
   created_at         DateTime    @default(now())
   streaks            Streak[]
   user_words         UserWord[]

@@ -18,11 +18,21 @@ func (d *DB) GetUser(id int64) (*User, error) {
 	err := d.Pool.QueryRow(context.Background(),
 		`SELECT id, username, COALESCE(first_name, ''), tz_offset, level,
 		        COALESCE(language, 'en'), active, COALESCE(onboarded, false),
-		        COALESCE(skip_count, 0), COALESCE(current_grammar_week, 1), created_at
+		        COALESCE(skip_count, 0), COALESCE(current_grammar_week, 1),
+		        COALESCE(word_hour, 7), COALESCE(word_min, 30),
+		        COALESCE(writing_hour, 12), COALESCE(writing_min, 0),
+		        COALESCE(media_hour, 18), COALESCE(media_min, 0),
+		        COALESCE(review_hour, 21), COALESCE(review_min, 30),
+		        created_at
 		 FROM users WHERE id = $1`, id,
 	).Scan(&u.ID, &u.Username, &u.FirstName, &u.TzOffset, &u.Level,
 		&u.Language, &u.Active, &u.Onboarded,
-		&u.SkipCount, &u.CurrentGrammarWeek, &u.CreatedAt)
+		&u.SkipCount, &u.CurrentGrammarWeek,
+		&u.Schedule.WordHour, &u.Schedule.WordMin,
+		&u.Schedule.WritingHour, &u.Schedule.WritingMin,
+		&u.Schedule.MediaHour, &u.Schedule.MediaMin,
+		&u.Schedule.ReviewHour, &u.Schedule.ReviewMin,
+		&u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +43,12 @@ func (d *DB) GetActiveUsers() ([]User, error) {
 	rows, err := d.Pool.Query(context.Background(),
 		`SELECT id, username, COALESCE(first_name, ''), tz_offset, level,
 		        COALESCE(language, 'en'), active, COALESCE(onboarded, false),
-		        COALESCE(skip_count, 0), COALESCE(current_grammar_week, 1), created_at
+		        COALESCE(skip_count, 0), COALESCE(current_grammar_week, 1),
+		        COALESCE(word_hour, 7), COALESCE(word_min, 30),
+		        COALESCE(writing_hour, 12), COALESCE(writing_min, 0),
+		        COALESCE(media_hour, 18), COALESCE(media_min, 0),
+		        COALESCE(review_hour, 21), COALESCE(review_min, 30),
+		        created_at
 		 FROM users WHERE active = true AND COALESCE(onboarded, false) = true`,
 	)
 	if err != nil {
@@ -46,7 +61,12 @@ func (d *DB) GetActiveUsers() ([]User, error) {
 		var u User
 		if err := rows.Scan(&u.ID, &u.Username, &u.FirstName, &u.TzOffset, &u.Level,
 			&u.Language, &u.Active, &u.Onboarded,
-			&u.SkipCount, &u.CurrentGrammarWeek, &u.CreatedAt); err != nil {
+			&u.SkipCount, &u.CurrentGrammarWeek,
+			&u.Schedule.WordHour, &u.Schedule.WordMin,
+			&u.Schedule.WritingHour, &u.Schedule.WritingMin,
+			&u.Schedule.MediaHour, &u.Schedule.MediaMin,
+			&u.Schedule.ReviewHour, &u.Schedule.ReviewMin,
+			&u.CreatedAt); err != nil {
 			return nil, err
 		}
 		users = append(users, u)

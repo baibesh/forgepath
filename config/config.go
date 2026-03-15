@@ -10,7 +10,8 @@ import (
 type Config struct {
 	BotToken    string
 	DatabaseURL string
-	OpenAIKey string
+	OpenAIKey   string
+	WebAppURL   string
 }
 
 func Load() *Config {
@@ -19,7 +20,8 @@ func Load() *Config {
 	cfg := &Config{
 		BotToken:    os.Getenv("BOT_TOKEN"),
 		DatabaseURL: os.Getenv("DATABASE_URL"),
-		OpenAIKey: os.Getenv("OPENAI_API_KEY"),
+		OpenAIKey:   os.Getenv("OPENAI_API_KEY"),
+		WebAppURL:   os.Getenv("WEBAPP_URL"),
 	}
 
 	if cfg.BotToken == "" {

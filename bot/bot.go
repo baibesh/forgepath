@@ -33,6 +33,7 @@ func SetBotCommands(b *tele.Bot) {
 
 func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 	openaiClient := ai.NewOpenAIClient(cfg.OpenAIKey)
+	SetWebAppURL(cfg.WebAppURL)
 
 	b.Handle("/start", func(c tele.Context) error {
 		user := c.Sender()
@@ -53,14 +54,21 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 		}
 
 		if err == nil && existing.Onboarded {
-			return c.Send(fmt.Sprintf(
+			scheduleText := FormatSchedule(existing.Schedule)
+			msg := fmt.Sprintf(
 				"Hey, %s! %s\n\n"+
 					"You're learning %s, level *%s*\n\n"+
+					"*Your daily schedule:*\n%s\n\n"+
 					"Pick what you want to do!",
 				user.FirstName, content.LanguageFlag(existing.Language),
 				content.LanguageName(existing.Language), existing.Level,
-			), &tele.SendOptions{
+				scheduleText,
+			)
+			c.Send(msg, &tele.SendOptions{
 				ParseMode:   tele.ModeMarkdown,
+				ReplyMarkup: ScheduleKeyboard(cfg.WebAppURL),
+			})
+			return c.Send("Choose an action:", &tele.SendOptions{
 				ReplyMarkup: MainKeyboard(),
 			})
 		}

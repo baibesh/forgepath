@@ -114,14 +114,14 @@ Return ONLY the wrong options, one per line, no numbering, no quotes.`, count, w
 	return options[:count], nil
 }
 
-func (o *OpenAIClient) GenerateWeeklyReport(wordsLearned, writingsDone, streakDays int, grammarFocus string) (string, error) {
+func (o *OpenAIClient) GenerateWeeklyReport(wordsLearned, writingsDone, streakDays int, grammarFocus, level string) (string, error) {
 	if o == nil {
 		return fmt.Sprintf("Great week! %d words learned, %d writings done, %d day streak!", wordsLearned, writingsDone, streakDays), nil
 	}
 
-	prompt := fmt.Sprintf(`Write a brief, encouraging weekly report for an A2 language learner (Russian-speaking).
+	prompt := fmt.Sprintf(`Write a brief, encouraging weekly report for an %s language learner (Russian-speaking).
 Stats: %d words learned, %d writings completed, %d day streak, grammar focus: %s.
-2-3 sentences. Encouraging but specific. Include one tip for next week. In English.`, wordsLearned, writingsDone, streakDays, grammarFocus)
+2-3 sentences. Encouraging but specific. Include one tip for next week. In English.`, level, wordsLearned, writingsDone, streakDays, grammarFocus)
 
 	return o.complete(prompt)
 }

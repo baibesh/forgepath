@@ -12,10 +12,36 @@ type quizEntry struct {
 	CreatedAt  time.Time
 }
 
+const (
+	quizPollMaxSize = 1000
+	quizPollTTL     = 2 * time.Hour
+)
+
 var (
 	quizPolls   = make(map[string]quizEntry)
 	quizPollsMu sync.Mutex
 )
+
+func init() {
+	go func() {
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			cleanupQuizPolls()
+		}
+	}()
+}
+
+func cleanupQuizPolls() {
+	quizPollsMu.Lock()
+	defer quizPollsMu.Unlock()
+	cutoff := time.Now().Add(-quizPollTTL)
+	for k, e := range quizPolls {
+		if e.CreatedAt.Before(cutoff) {
+			delete(quizPolls, k)
+		}
+	}
+}
 
 func RegisterQuizPoll(pollID string, userID int64, wordID int, correctIdx int) {
 	quizPollsMu.Lock()
@@ -26,8 +52,8 @@ func RegisterQuizPoll(pollID string, userID int64, wordID int, correctIdx int) {
 		CorrectIdx: correctIdx,
 		CreatedAt:  time.Now(),
 	}
-	if len(quizPolls) > 500 {
-		cutoff := time.Now().Add(-2 * time.Hour)
+	if len(quizPolls) > quizPollMaxSize {
+		cutoff := time.Now().Add(-quizPollTTL)
 		for k, e := range quizPolls {
 			if e.CreatedAt.Before(cutoff) {
 				delete(quizPolls, k)

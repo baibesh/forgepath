@@ -48,6 +48,7 @@ func routeButtonCommand(c tele.Context, database *db.DB, openaiClient *ai.OpenAI
 	state, _ := database.GetState(c.Sender().ID)
 	if state.State != "idle" && state.State != "" {
 		database.ClearState(c.Sender().ID)
+		c.Send("Previous task cancelled.")
 	}
 
 	switch cmd {
@@ -87,7 +88,13 @@ func handleVoice(c tele.Context, b *tele.Bot, database *db.DB, openaiClient *ai.
 		return c.Send("Could not process your voice message. Try again.")
 	}
 
-	tmpPath := fmt.Sprintf("/tmp/forgepath-voice-%d.ogg", userID)
+	tmpFile, tmpErr := os.CreateTemp("", fmt.Sprintf("forgepath-voice-%d-*.ogg", userID))
+	if tmpErr != nil {
+		log.Printf("[user=%d] voice temp file error: %v", userID, tmpErr)
+		return c.Send("Could not process your voice message. Try again.")
+	}
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
 	if err := b.Download(&file, tmpPath); err != nil {
 		log.Printf("[user=%d] voice save error: %v", userID, err)
 		return c.Send("Could not process your voice message. Try again.")
@@ -330,6 +337,10 @@ func processMediaTask(c tele.Context, database *db.DB, openaiClient *ai.OpenAICl
 	database.MarkWritingDone(userID, tzOffset)
 
 	c.Send("\u2705 Got it! Let me check...")
+
+	if openaiClient == nil {
+		return c.Send("Good job! \U0001F4AA")
+	}
 
 	feedback, err := openaiClient.CheckSentences(text, mediaTitle, level, language)
 	if err != nil {

@@ -84,9 +84,16 @@ func SettingsKeyboard() *tele.ReplyMarkup {
 		),
 		menu.Row(
 			menu.Data("\U0001F310 Language", "settings", "language"),
+			menu.Data("\U0001F514 Schedule", "settings", "schedule"),
 		),
 	)
 	return menu
+}
+
+var webAppURL string
+
+func SetWebAppURL(url string) {
+	webAppURL = url
 }
 
 func SettingsLanguageKeyboard() *tele.ReplyMarkup {
@@ -189,5 +196,17 @@ func MediaDoneKeyboard(mediaID int) *tele.ReplyMarkup {
 			menu.Data("\u2705 Done watching!", "media", fmt.Sprintf("done|%d", mediaID)),
 		),
 	)
+	return menu
+}
+
+func ScheduleKeyboard(webAppURL string) *tele.ReplyMarkup {
+	menu := &tele.ReplyMarkup{}
+	rows := []tele.Row{}
+	if webAppURL != "" {
+		rows = append(rows, menu.Row(
+			menu.WebApp("\u2699\uFE0F Customize schedule", &tele.WebApp{URL: webAppURL + "/schedule"}),
+		))
+	}
+	menu.Inline(rows...)
 	return menu
 }

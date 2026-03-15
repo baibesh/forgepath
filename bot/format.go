@@ -155,6 +155,19 @@ func FormatDailyReview(todayWord *db.Word, streak *db.TodayStreak, streakDays in
 	return sb.String()
 }
 
+func FormatSchedule(s db.UserSchedule) string {
+	return fmt.Sprintf(
+		"\U0001F31F Word — *%02d:%02d*\n"+
+			"\u270D\uFE0F Writing — *%02d:%02d*\n"+
+			"\U0001F3AC Media — *%02d:%02d*\n"+
+			"\U0001F31B Review — *%02d:%02d*",
+		s.WordHour, s.WordMin,
+		s.WritingHour, s.WritingMin,
+		s.MediaHour, s.MediaMin,
+		s.ReviewHour, s.ReviewMin,
+	)
+}
+
 func escapeMarkdown(s string) string {
 	s = strings.ReplaceAll(s, "[", "\\[")
 	s = strings.ReplaceAll(s, "]", "\\]")

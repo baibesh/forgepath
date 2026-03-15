@@ -3,6 +3,7 @@ package cron
 import (
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	tele "gopkg.in/telebot.v3"
@@ -33,30 +34,46 @@ func (j *Jobs) DispatchTasks() {
 	now := time.Now().UTC()
 	log.Printf("[cron] dispatch: %d active users, UTC %s", len(users), now.Format("15:04"))
 
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 10)
+
 	for _, user := range users {
-		localHour := (now.Hour() + user.TzOffset) % 24
-		if localHour < 0 {
-			localHour += 24
-		}
-		localMinute := now.Minute()
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
 
-		j.checkStateTimeout(user.ID)
+			localHour := ((now.Hour() + user.TzOffset) % 24 + 24) % 24
+			localMinute := now.Minute()
 
-		switch {
-		case localHour == 7 && localMinute >= 30:
-			j.safeSend(user, j.sendWordOfDay)
-		case localHour == 12 && localMinute < 30:
-			j.safeSend(user, j.sendWritingPrompt)
-		case localHour == 18 && localMinute < 30:
-			j.safeSend(user, j.sendMediaRecommendation)
-		case localHour == 21 && localMinute >= 30:
-			j.safeSend(user, j.sendDailyReview)
-		}
+			j.checkStateTimeout(user.ID)
 
-		if now.Weekday() == time.Sunday && localHour == 9 && localMinute < 30 {
-			j.safeSend(user, j.sendWeeklyReport)
-		}
+			inWindow := func(targetHour, targetMinute int) bool {
+				totalLocal := localHour*60 + localMinute
+				totalTarget := targetHour*60 + targetMinute
+				return totalLocal >= totalTarget && totalLocal < totalTarget+30
+			}
+
+			s := user.Schedule
+
+			switch {
+			case inWindow(s.WordHour, s.WordMin):
+				j.safeSend(user, j.sendWordOfDay)
+			case inWindow(s.WritingHour, s.WritingMin):
+				j.safeSend(user, j.sendWritingPrompt)
+			case inWindow(s.MediaHour, s.MediaMin):
+				j.safeSend(user, j.sendMediaRecommendation)
+			case inWindow(s.ReviewHour, s.ReviewMin):
+				j.safeSend(user, j.sendDailyReview)
+			}
+
+			if now.Weekday() == time.Sunday && inWindow(9, 0) {
+				j.safeSend(user, j.sendWeeklyReport)
+			}
+		}()
 	}
+	wg.Wait()
 }
 
 func (j *Jobs) safeSend(user db.User, fn func(db.User)) {
@@ -202,7 +219,7 @@ func (j *Jobs) sendWeeklyReport(user db.User) {
 
 	grammarFocus := bot.GrammarTenseName(grammar)
 
-	report, err := j.openai.GenerateWeeklyReport(weekly.WordsDone, weekly.WritingsDone, streakDays, grammarFocus)
+	report, err := j.openai.GenerateWeeklyReport(weekly.WordsDone, weekly.WritingsDone, streakDays, grammarFocus, user.Level)
 	if err != nil {
 		report = fmt.Sprintf("Nice work this week! %d words learned, %d texts written, %d day streak!", weekly.WordsDone, weekly.WritingsDone, streakDays)
 	}

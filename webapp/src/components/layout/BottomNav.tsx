@@ -6,7 +6,7 @@ import {
   LayoutDashboard,
   BookOpen,
   PenLine,
-  Video,
+  Clock,
   Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,7 +15,7 @@ const items = [
   { href: "/", label: "Home", icon: LayoutDashboard },
   { href: "/words", label: "Words", icon: BookOpen },
   { href: "/writings", label: "Writings", icon: PenLine },
-  { href: "/media", label: "Videos", icon: Video },
+  { href: "/schedule", label: "Schedule", icon: Clock },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

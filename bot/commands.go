@@ -167,14 +167,21 @@ func handleQuiz(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 		return c.Send("Nothing to review yet! Learn some words first with /word")
 	}
 
+	sentTypingQuiz := false
 	for _, w := range words {
 		word := w
 		reps, _ := database.GetUserWordRepetitions(user.ID, word.ID)
-		if reps >= 3 {
-			return sendQuizForWord(c, database, &word, openaiClient)
+		if reps >= 3 && !sentTypingQuiz {
+			if err := sendQuizForWord(c, database, &word, openaiClient); err != nil {
+				log.Printf("[user=%d] quiz error word=%d: %v", user.ID, word.ID, err)
+			}
+			sentTypingQuiz = true
+			continue
 		}
-		if err := SendQuizPoll(c.Bot(), c.Recipient(), user.ID, &word, openaiClient); err != nil {
-			log.Printf("[user=%d] quiz error word=%d: %v", user.ID, word.ID, err)
+		if reps < 3 {
+			if err := SendQuizPoll(c.Bot(), c.Recipient(), user.ID, &word, openaiClient); err != nil {
+				log.Printf("[user=%d] quiz error word=%d: %v", user.ID, word.ID, err)
+			}
 		}
 	}
 	return nil

@@ -2,6 +2,17 @@ package db
 
 import "time"
 
+type UserSchedule struct {
+	WordHour    int
+	WordMin     int
+	WritingHour int
+	WritingMin  int
+	MediaHour   int
+	MediaMin    int
+	ReviewHour  int
+	ReviewMin   int
+}
+
 type User struct {
 	ID                 int64
 	Username           string
@@ -13,6 +24,7 @@ type User struct {
 	Onboarded          bool
 	SkipCount          int
 	CurrentGrammarWeek int
+	Schedule           UserSchedule
 	CreatedAt          time.Time
 }
 

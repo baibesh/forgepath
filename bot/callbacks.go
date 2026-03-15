@@ -106,6 +106,11 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 			return c.Edit("\U0001F4DA Select your level:", &tele.SendOptions{ReplyMarkup: SettingsLevelKeyboard()})
 		case "language":
 			return c.Edit("\U0001F310 Select your language:", &tele.SendOptions{ReplyMarkup: SettingsLanguageKeyboard()})
+		case "schedule":
+			if webAppURL != "" {
+				return c.Edit("\U0001F514 Set your notification times:", &tele.SendOptions{ReplyMarkup: ScheduleKeyboard(webAppURL)})
+			}
+			return c.Respond(&tele.CallbackResponse{Text: "Schedule settings not available"})
 		}
 		return nil
 	})
