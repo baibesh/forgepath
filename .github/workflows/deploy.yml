@@ -109,8 +109,8 @@ jobs:
             echo "DATABASE_URL=${DATABASE_URL}" > .env
             echo "BOT_TOKEN=${BOT_TOKEN}" >> .env
             pm2 restart forgepath-webapp || pm2 start server.js --name forgepath-webapp
-            sleep 3
-            if curl -sf http://localhost:3000/ > /dev/null; then
+            sleep 5
+            if curl -sf --max-time 10 http://localhost:3000/ > /dev/null; then
               echo "Health check OK"
               rm -rf $BACKUP
             else
