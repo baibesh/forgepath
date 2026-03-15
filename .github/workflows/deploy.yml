@@ -98,7 +98,7 @@ jobs:
 
           ssh -i ~/.ssh/deploy_key root@$SERVER_HOST bash -s << 'DEPLOY'
           set -e
-          pm2 stop forgepath-webapp || true
+          pm2 delete forgepath-webapp || true
           rm -rf /opt/forgepath-webapp/.next /opt/forgepath-webapp/server.js /opt/forgepath-webapp/node_modules /opt/forgepath-webapp/package.json
           tar -xzf /tmp/webapp-bundle.tar.gz -C /opt/forgepath-webapp/
           rm -f /tmp/webapp-bundle.tar.gz
@@ -108,7 +108,8 @@ jobs:
           cd /opt/forgepath-webapp
           echo "DATABASE_URL=${DATABASE_URL}" > .env
           echo "BOT_TOKEN=${BOT_TOKEN}" >> .env
-          pm2 start server.js --name forgepath-webapp 2>/dev/null || pm2 restart forgepath-webapp
+          pm2 start server.js --name forgepath-webapp
+          pm2 save
           for i in 1 2 3 4 5; do
             if curl -sf --max-time 5 http://localhost:3000/ > /dev/null 2>&1; then
               echo "Health check passed on attempt \$i"
