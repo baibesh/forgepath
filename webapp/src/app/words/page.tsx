@@ -22,27 +22,31 @@ interface WordItem {
 }
 
 export default function WordsPage() {
-  const { token } = useTelegramAuth();
+  const { token, loading: authLoading } = useTelegramAuth();
   const authFetch = useAuthFetch();
   const [words, setWords] = useState<WordItem[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const fetchWords = useCallback(async () => {
     if (!token) return;
     setLoading(true);
-    const params = new URLSearchParams({
-      filter,
-      search,
-      page: String(page),
-    });
-    const res = await authFetch(`/api/words?${params}`);
-    const data = await res.json();
-    setWords(data.words);
-    setTotalPages(data.totalPages);
+    try {
+      const params = new URLSearchParams({
+        filter,
+        search,
+        page: String(page),
+      });
+      const res = await authFetch(`/api/words?${params}`);
+      const data = await res.json();
+      setWords(data.words ?? []);
+      setTotalPages(data.totalPages ?? 1);
+    } catch {
+      setWords([]);
+    }
     setLoading(false);
   }, [token, filter, search, page, authFetch]);
 
@@ -93,10 +97,12 @@ export default function WordsPage() {
           ))}
         </div>
 
-        {loading ? (
+        {authLoading || loading ? (
           <div className="flex justify-center py-8">
             <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
           </div>
+        ) : !token ? (
+          <p className="text-center text-text-muted py-8">Open this app from Telegram</p>
         ) : (
           <WordList words={words} />
         )}

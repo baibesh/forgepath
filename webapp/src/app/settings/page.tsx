@@ -13,7 +13,7 @@ interface SettingsData {
 }
 
 export default function SettingsPage() {
-  const { token } = useTelegramAuth();
+  const { token, loading: authLoading } = useTelegramAuth();
   const authFetch = useAuthFetch();
   const [settings, setSettings] = useState<SettingsData | null>(null);
 
@@ -21,14 +21,21 @@ export default function SettingsPage() {
     if (!token) return;
     authFetch("/api/settings")
       .then((r) => r.json())
-      .then(setSettings);
+      .then(setSettings)
+      .catch(() => {});
   }, [token, authFetch]);
 
   return (
     <PageTransition>
       <div className="space-y-4">
         <h1 className="text-xl font-semibold">Settings</h1>
-        {settings ? (
+        {authLoading ? (
+          <div className="flex justify-center py-8">
+            <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : !token ? (
+          <p className="text-center text-text-muted py-8">Open this app from Telegram</p>
+        ) : settings ? (
           <SettingsForm initial={settings} />
         ) : (
           <div className="flex justify-center py-8">

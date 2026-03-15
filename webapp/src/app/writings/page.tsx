@@ -17,20 +17,24 @@ interface WritingData {
 }
 
 export default function WritingsPage() {
-  const { token } = useTelegramAuth();
+  const { token, loading: authLoading } = useTelegramAuth();
   const authFetch = useAuthFetch();
   const [writings, setWritings] = useState<WritingData[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const fetchWritings = useCallback(async () => {
     if (!token) return;
     setLoading(true);
-    const res = await authFetch(`/api/writings?page=${page}`);
-    const data = await res.json();
-    setWritings(data.writings);
-    setTotalPages(data.totalPages);
+    try {
+      const res = await authFetch(`/api/writings?page=${page}`);
+      const data = await res.json();
+      setWritings(data.writings ?? []);
+      setTotalPages(data.totalPages ?? 1);
+    } catch {
+      setWritings([]);
+    }
     setLoading(false);
   }, [token, page, authFetch]);
 
@@ -43,10 +47,12 @@ export default function WritingsPage() {
       <div className="space-y-4">
         <h1 className="text-xl font-semibold">My Writings</h1>
 
-        {loading ? (
+        {authLoading || loading ? (
           <div className="flex justify-center py-8">
             <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
           </div>
+        ) : !token ? (
+          <p className="text-center text-text-muted py-8">Open this app from Telegram</p>
         ) : (
           <WritingList writings={writings} />
         )}
