@@ -266,6 +266,15 @@ func generateWords(client *openai.Client, prompt string, count int, langName str
 		wordLang = "German"
 	}
 
+	// Extract level from the prompt (A1/A2/B1/B2)
+	level := "A2"
+	for _, l := range []string{"A1", "B2", "B1"} {
+		if strings.Contains(prompt, l) {
+			level = l
+			break
+		}
+	}
+
 	fullPrompt := fmt.Sprintf(`%s
 
 Return EXACTLY %d entries as a JSON array. Each entry must have:
@@ -274,9 +283,9 @@ Return EXACTLY %d entries as a JSON array. Each entry must have:
 - "example": one natural example sentence using this word in %s
 - "collocations": 2-3 common collocations separated by comma
 - "construction": grammatical pattern (e.g., "verb + zu + Inf", "adj + Nomen")
-- "level": "A2"
+- "level": "%s"
 
-Return ONLY the JSON array, no other text. Make sure it's valid JSON.`, prompt, count, wordLang, wordLang)
+Return ONLY the JSON array, no other text. Make sure it's valid JSON.`, prompt, count, wordLang, wordLang, level)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
