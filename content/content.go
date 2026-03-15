@@ -63,8 +63,8 @@ func LanguageFlag(code string) string {
 func WritingHint(language string) string {
 	switch language {
 	case "de":
-		return "Schreibe deinen Text und sende ihn ab!"
+		return "Schreib ein paar Satze und schick sie ab. Keine Angst vor Fehlern!"
 	default:
-		return "Send your text when ready!"
+		return "Write a few sentences and send them. Don't worry about mistakes — I'll help!"
 	}
 }

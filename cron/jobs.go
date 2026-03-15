@@ -123,10 +123,7 @@ func (j *Jobs) sendWritingPrompt(user db.User) {
 	})
 
 	log.Printf("[cron][user=%d] writing prompt: %s", user.ID, topic)
-	j.sendMessage(user.ID, fmt.Sprintf("\u270D\uFE0F *Free Writing — 5 min*\n\n"+
-		"\U0001F3AF Grammar: %s\n\U0001F6AA %s\n\n*Topic:* \"%s\"\n\n\U0001F4CD Formula: %s\n\U0001F4CD Markers: %s\n\n%s",
-		grammar.TenseName, grammar.Anchor, topic, grammar.Formula, grammar.Markers,
-		content.WritingHint(user.Language)))
+	j.sendMessage(user.ID, bot.FormatWritingPrompt(topic, grammar.TenseName, grammar, user.Language))
 }
 
 func (j *Jobs) sendMediaRecommendation(user db.User) {
@@ -188,10 +185,13 @@ func (j *Jobs) sendMediaTask(user db.User) {
 	})
 
 	log.Printf("[cron][user=%d] media task for: %s", user.ID, mediaTitle)
-	j.sendMessage(user.ID, fmt.Sprintf("\U0001F4DD *Post-Media Task*\n\n"+
-		"Write 3 sentences about what you watched:\nUse %s\n\n"+
-		"1. What happened in the video?\n2. One new word or phrase you noticed\n"+
-		"3. \"I think...\" (your opinion)\n\n_(type your sentences)_", grammarFocus))
+	j.sendMessage(user.ID, fmt.Sprintf("\U0001F4DD *What did you think?*\n\n"+
+		"Write a few sentences about what you watched.\n\n"+
+		"For example:\n"+
+		"\u2022 What was it about?\n"+
+		"\u2022 What new word did you hear?\n"+
+		"\u2022 What do you think about it?\n\n"+
+		"Try to use *%s*!", grammarFocus))
 }
 
 func (j *Jobs) sendDailyReview(user db.User) {
@@ -210,9 +210,9 @@ func (j *Jobs) sendDailyReview(user db.User) {
 	}
 
 	log.Printf("[cron][user=%d] daily review (streak=%d)", user.ID, streakDays)
-	j.sendMessage(user.ID, fmt.Sprintf("\U0001F4CA *Daily Review*\n\n"+
-		"%s Word of the Day\n%s Free Writing\n%s Daily Review\n\n\U0001F525 Streak: *%d days*\n\n"+
-		"Complete a /quiz to finish your day! \U0001F4AA",
+	j.sendMessage(user.ID, fmt.Sprintf("\U0001F31B *End of day!*\n\n"+
+		"%s New word\n%s Writing\n%s Quiz\n\n\U0001F525 *%d days* in a row!\n\n"+
+		"Take a /quiz to complete today!",
 		check(streak.WordDone), check(streak.WritingDone), check(streak.ReviewDone), streakDays))
 }
 
@@ -225,12 +225,12 @@ func (j *Jobs) sendWeeklyReport(user db.User) {
 
 	report, err := j.openai.GenerateWeeklyReport(weekly.WordsDone, weekly.WritingsDone, streakDays, grammarFocus)
 	if err != nil {
-		report = fmt.Sprintf("Great week! %d words, %d writings, %d day streak!", weekly.WordsDone, weekly.WritingsDone, streakDays)
+		report = fmt.Sprintf("Nice work this week! %d words learned, %d texts written, %d day streak!", weekly.WordsDone, weekly.WritingsDone, streakDays)
 	}
 
 	log.Printf("[cron][user=%d] weekly report", user.ID)
-	j.sendMessage(user.ID, fmt.Sprintf("\U0001F4CA *Weekly Report*\n\n"+
-		"\U0001F4D6 Words: %d\n\u270D\uFE0F Writings: %d\n\U0001F4DD Reviews: %d\n\U0001F525 Streak: %d days\n\n%s\n\nNew grammar week starts now! \U0001F4DA",
+	j.sendMessage(user.ID, fmt.Sprintf("\U0001F389 *Your week!*\n\n"+
+		"\U0001F4D6 Words: %d\n\u270D\uFE0F Writings: %d\n\U0001F9E9 Quizzes: %d\n\U0001F525 Streak: %d days\n\n%s\n\nNew grammar topic starts now!",
 		weekly.WordsDone, weekly.WritingsDone, weekly.ReviewsDone, streakDays, report))
 
 	j.db.AdvanceGrammarWeek(user.ID)

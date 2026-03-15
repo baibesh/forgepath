@@ -216,16 +216,16 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 			result := srs.Calculate(reps, interval, ease, 4)
 			database.UpdateWordReview(userID, wordID, result.IntervalDays, result.EaseFactor, result.Repetitions)
 			database.MarkReviewDone(userID, tzOffset)
-			c.Respond(&tele.CallbackResponse{Text: "\u2705 Correct!"})
-			return c.Edit(fmt.Sprintf("\u2705 *Correct!*\n\n*%s* — %s",
+			c.Respond(&tele.CallbackResponse{Text: "\u2705 Yes!"})
+			return c.Edit(fmt.Sprintf("\u2705 *You got it!*\n\n*%s* — %s",
 				escapeMarkdown(word.Word), escapeMarkdown(word.Definition)),
 				&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 		}
 
 		result := srs.Calculate(reps, interval, ease, 1)
 		database.UpdateWordReview(userID, wordID, result.IntervalDays, result.EaseFactor, result.Repetitions)
-		c.Respond(&tele.CallbackResponse{Text: "\u274C Wrong!"})
-		return c.Edit(fmt.Sprintf("\u274C *Wrong!*\n\n*%s* — %s\n\nYou'll see this again soon!",
+		c.Respond(&tele.CallbackResponse{Text: "Not this time"})
+		return c.Edit(fmt.Sprintf("\u274C The answer was: *%s* — %s\n\nNo worries, you'll see it again!",
 			escapeMarkdown(word.Word), escapeMarkdown(word.Definition)),
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	})
@@ -237,7 +237,7 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 
 		if data == "cancel" {
 			c.Respond(&tele.CallbackResponse{Text: "Cancelled"})
-			return c.Edit("\u2705 Skip cancelled. Keep going! \U0001F4AA")
+			return c.Edit("\u2705 Good choice! Let's keep going!")
 		}
 
 		user, err := database.GetUser(userID)
@@ -246,8 +246,8 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		}
 
 		if user.SkipCount >= 2 {
-			c.Respond(&tele.CallbackResponse{Text: "No skips left!"})
-			return c.Edit("\u274C You've already used both skips this week.")
+			c.Respond(&tele.CallbackResponse{Text: "No days off left"})
+			return c.Edit("You've already taken 2 days off this week.")
 		}
 
 		database.IncrementSkipCount(userID)
@@ -256,8 +256,8 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		database.MarkReviewDone(userID, user.TzOffset)
 		database.ClearState(userID)
 
-		c.Respond(&tele.CallbackResponse{Text: "Day skipped"})
-		return c.Edit(fmt.Sprintf("\u23ED Day skipped.\n\nSkips used: %d/2 this week.", user.SkipCount+1))
+		c.Respond(&tele.CallbackResponse{Text: "Day off!"})
+		return c.Edit(fmt.Sprintf("\U0001F634 Rest day! You have %d day(s) off left this week.", 2-user.SkipCount-1))
 	})
 
 	b.Handle(&tele.Btn{Unique: "media"}, func(c tele.Context) error {

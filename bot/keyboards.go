@@ -21,13 +21,15 @@ func LevelSelectKeyboard() *tele.ReplyMarkup {
 	menu := &tele.ReplyMarkup{}
 	menu.Inline(
 		menu.Row(
-			menu.Data("A1", "level", "A1"),
-			menu.Data("A2", "level", "A2"),
-			menu.Data("B1", "level", "B1"),
+			menu.Data("\U0001F331 Beginner (A1)", "level", "A1"),
+			menu.Data("\U0001F33F A bit (A2)", "level", "A2"),
 		),
 		menu.Row(
-			menu.Data("B2", "level", "B2"),
-			menu.Data("C1", "level", "C1"),
+			menu.Data("\U0001F333 Middle (B1)", "level", "B1"),
+			menu.Data("\U0001F4AA Strong (B2)", "level", "B2"),
+		),
+		menu.Row(
+			menu.Data("\U0001F31F Advanced (C1)", "level", "C1"),
 		),
 	)
 	return menu
@@ -37,22 +39,20 @@ func TimezoneKeyboard() *tele.ReplyMarkup {
 	menu := &tele.ReplyMarkup{}
 	menu.Inline(
 		menu.Row(
-			menu.Data("UTC+2 \U0001F1EA\U0001F1FA", "tz", "2"),
-			menu.Data("UTC+3 \U0001F1F7\U0001F1FA", "tz", "3"),
-			menu.Data("UTC+4", "tz", "4"),
+			menu.Data("\U0001F1EA\U0001F1FA Europe +2", "tz", "2"),
+			menu.Data("\U0001F1F7\U0001F1FA Moscow +3", "tz", "3"),
 		),
 		menu.Row(
-			menu.Data("UTC+5 \U0001F1F0\U0001F1FF", "tz", "5"),
-			menu.Data("UTC+6 \U0001F1F0\U0001F1FF", "tz", "6"),
-			menu.Data("UTC+7", "tz", "7"),
+			menu.Data("\U0001F1F0\U0001F1FF Astana +5", "tz", "5"),
+			menu.Data("\U0001F1F0\U0001F1FF Almaty +6", "tz", "6"),
 		),
 		menu.Row(
-			menu.Data("UTC+8", "tz", "8"),
-			menu.Data("UTC+9", "tz", "9"),
-			menu.Data("UTC+10", "tz", "10"),
+			menu.Data("+4", "tz", "4"),
+			menu.Data("+7", "tz", "7"),
+			menu.Data("+8", "tz", "8"),
 		),
 		menu.Row(
-			menu.Data("Other (type number)", "tz", "custom"),
+			menu.Data("Other", "tz", "custom"),
 		),
 	)
 	return menu
@@ -87,13 +87,15 @@ func SettingsLevelKeyboard() *tele.ReplyMarkup {
 	menu := &tele.ReplyMarkup{}
 	menu.Inline(
 		menu.Row(
-			menu.Data("A1", "setlevel", "A1"),
-			menu.Data("A2", "setlevel", "A2"),
-			menu.Data("B1", "setlevel", "B1"),
+			menu.Data("\U0001F331 Beginner (A1)", "setlevel", "A1"),
+			menu.Data("\U0001F33F A bit (A2)", "setlevel", "A2"),
 		),
 		menu.Row(
-			menu.Data("B2", "setlevel", "B2"),
-			menu.Data("C1", "setlevel", "C1"),
+			menu.Data("\U0001F333 Middle (B1)", "setlevel", "B1"),
+			menu.Data("\U0001F4AA Strong (B2)", "setlevel", "B2"),
+		),
+		menu.Row(
+			menu.Data("\U0001F31F Advanced (C1)", "setlevel", "C1"),
 		),
 	)
 	return menu
@@ -103,19 +105,17 @@ func SettingsTimezoneKeyboard() *tele.ReplyMarkup {
 	menu := &tele.ReplyMarkup{}
 	menu.Inline(
 		menu.Row(
-			menu.Data("UTC+2 \U0001F1EA\U0001F1FA", "settz", "2"),
-			menu.Data("UTC+3 \U0001F1F7\U0001F1FA", "settz", "3"),
-			menu.Data("UTC+4", "settz", "4"),
+			menu.Data("\U0001F1EA\U0001F1FA Europe +2", "settz", "2"),
+			menu.Data("\U0001F1F7\U0001F1FA Moscow +3", "settz", "3"),
 		),
 		menu.Row(
-			menu.Data("UTC+5 \U0001F1F0\U0001F1FF", "settz", "5"),
-			menu.Data("UTC+6 \U0001F1F0\U0001F1FF", "settz", "6"),
-			menu.Data("UTC+7", "settz", "7"),
+			menu.Data("\U0001F1F0\U0001F1FF Astana +5", "settz", "5"),
+			menu.Data("\U0001F1F0\U0001F1FF Almaty +6", "settz", "6"),
 		),
 		menu.Row(
-			menu.Data("UTC+8", "settz", "8"),
-			menu.Data("UTC+9", "settz", "9"),
-			menu.Data("UTC+10", "settz", "10"),
+			menu.Data("+4", "settz", "4"),
+			menu.Data("+7", "settz", "7"),
+			menu.Data("+8", "settz", "8"),
 		),
 		menu.Row(
 			menu.Data("Other", "settz", "custom"),
@@ -149,7 +149,7 @@ func SkipConfirmKeyboard() *tele.ReplyMarkup {
 	menu.Inline(
 		menu.Row(
 			menu.Data("\u2705 Yes, skip", "skip", "confirm"),
-			menu.Data("\u274C Cancel", "skip", "cancel"),
+			menu.Data("\u274C No, I'll do it", "skip", "cancel"),
 		),
 	)
 	return menu
@@ -169,7 +169,7 @@ func MediaDoneKeyboard(mediaID int) *tele.ReplyMarkup {
 	menu := &tele.ReplyMarkup{}
 	menu.Inline(
 		menu.Row(
-			menu.Data("\u2705 I watched it!", "media", fmt.Sprintf("done|%d", mediaID)),
+			menu.Data("\u2705 Done watching!", "media", fmt.Sprintf("done|%d", mediaID)),
 		),
 	)
 	return menu

@@ -15,16 +15,16 @@ import (
 
 func SetBotCommands(b *tele.Bot) {
 	commands := []tele.Command{
-		{Text: "today", Description: "Current tasks for today"},
-		{Text: "word", Description: "Get word of the day"},
-		{Text: "quiz", Description: "Start a review quiz"},
-		{Text: "write", Description: "Start free writing (5 min)"},
-		{Text: "stats", Description: "View your progress"},
-		{Text: "words", Description: "Your learned words"},
-		{Text: "skip", Description: "Skip today (max 2/week)"},
-		{Text: "cancel", Description: "Cancel current task"},
-		{Text: "settings", Description: "Change language/level/timezone"},
-		{Text: "help", Description: "How the bot works"},
+		{Text: "today", Description: "What's left for today"},
+		{Text: "word", Description: "Learn a new word"},
+		{Text: "quiz", Description: "Practice words"},
+		{Text: "write", Description: "Write something (5 min)"},
+		{Text: "stats", Description: "Your progress"},
+		{Text: "words", Description: "Words you've learned"},
+		{Text: "skip", Description: "Take a day off"},
+		{Text: "cancel", Description: "Stop current task"},
+		{Text: "settings", Description: "Change settings"},
+		{Text: "help", Description: "How this works"},
 	}
 	if err := b.SetCommands(commands); err != nil {
 		log.Printf("SetCommands error: %v", err)
@@ -54,10 +54,11 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 
 		if err == nil && existing.Onboarded {
 			return c.Send(fmt.Sprintf(
-				"Welcome back, %s! %s\n\n%s %s | Level: *%s*\nTimezone: %s\n\nUse /help to see commands.",
+				"Hey, %s! %s\n\n"+
+					"You're learning %s, level *%s*\n\n"+
+					"Type /today to see what's next!",
 				user.FirstName, content.LanguageFlag(existing.Language),
-				content.LanguageFlag(existing.Language), content.LanguageName(existing.Language),
-				existing.Level, FormatUTCOffset(existing.TzOffset),
+				content.LanguageName(existing.Language), existing.Level,
 			), &tele.SendOptions{
 				ParseMode:   tele.ModeMarkdown,
 				ReplyMarkup: &tele.ReplyMarkup{RemoveKeyboard: true},
@@ -67,10 +68,13 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 		database.SetState(user.ID, "onboarding_language", map[string]string{})
 		return c.Send(fmt.Sprintf(
 			"Hey, %s! \U0001F44B\n\n"+
-				"Welcome to *ForgePath* — your daily language learning companion.\n\n"+
-				"\U0001F4D6 Morning — Word of the Day + Quiz\n\u270D\uFE0F Afternoon — Free Writing (5 min)\n"+
-				"\U0001F3AC Evening — Media Recommendation\n\U0001F4CA Night — Daily Review\n\n"+
-				"Let's set you up! Choose your language:",
+				"I'm *ForgePath* — I'll help you learn a language every day.\n\n"+
+				"Here's how it works:\n"+
+				"\U0001F31F Morning — a new word + quiz\n"+
+				"\u270D\uFE0F Afternoon — write a few sentences\n"+
+				"\U0001F3AC Evening — watch something fun\n"+
+				"\U0001F31B Night — see how your day went\n\n"+
+				"Let's start! What language?",
 			user.FirstName,
 		), &tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: LanguageSelectKeyboard()})
 	})
@@ -88,7 +92,7 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 		log.Printf("[user=%d] /cancel", userID)
 		state, _ := database.GetState(userID)
 		if state.State == "idle" {
-			return c.Send("Nothing to cancel.")
+			return c.Send("Nothing to cancel right now.")
 		}
 
 		if state.State == "waiting_quiz_typing" || state.State == "waiting_quiz_sentence" {
@@ -102,39 +106,31 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 		}
 
 		database.ClearState(userID)
-		return c.Send("\u2705 Cancelled. You can start a new task anytime.")
+		return c.Send("\u2705 Done! You can start something new anytime.")
 	})
 
 	b.Handle("/settings", func(c tele.Context) error {
-		return c.Send("\u2699\uFE0F *Settings*\n\nWhat would you like to change?",
+		return c.Send("\u2699\uFE0F *Settings*\n\nWhat do you want to change?",
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: SettingsKeyboard()})
 	})
 
 	b.Handle("/help", func(c tele.Context) error {
 		return c.Send(
-			"\U0001F4DA *ForgePath Help*\n\n"+
-				"*Daily Schedule:*\n"+
-				"07:30 — \U0001F4D6 Word of the Day + Quiz\n"+
-				"12:00 — \u270D\uFE0F Free Writing (5 min)\n"+
-				"18:00 — \U0001F3AC Media Recommendation\n"+
-				"21:30 — \U0001F4CA Daily Review\n\n"+
-				"*Commands:*\n"+
-				"/today — see current task\n"+
-				"/word — get word of the day\n"+
-				"/quiz — start a quiz\n"+
-				"/write — start free writing\n"+
-				"/stats — view your progress\n"+
-				"/skip — skip today (max 2/week)\n"+
-				"/cancel — cancel current task\n"+
-				"/words — your learned words\n"+
-				"/settings — change timezone/level/language\n"+
-				"/help — this message\n\n"+
-				"*How it works:*\n"+
-				"Each week focuses on one grammar tense.\n"+
-				"Words come with constructions + collocations.\n"+
-				"Quiz adapts to your recall level (SRS).\n"+
-				"Writing gets AI feedback.\n"+
-				"Stay consistent, build your streak! \U0001F525",
+			"\U0001F4DA *How ForgePath works*\n\n"+
+				"Every day you get:\n"+
+				"\U0001F31F *New word* at 7:30 — learn it and take a quiz\n"+
+				"\u270D\uFE0F *Writing* at 12:00 — write a few sentences on a topic\n"+
+				"\U0001F3AC *Video* at 18:00 — watch something and write about it\n"+
+				"\U0001F31B *Review* at 21:30 — see how your day went\n\n"+
+				"*Main commands:*\n"+
+				"/word — learn a new word\n"+
+				"/write — write something\n"+
+				"/quiz — practice your words\n"+
+				"/today — what's left for today\n"+
+				"/stats — your progress\n"+
+				"/skip — take a day off\n\n"+
+				"Each week focuses on one grammar topic.\n"+
+				"Don't worry about mistakes — that's how you learn! \U0001F4AA",
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	})
 

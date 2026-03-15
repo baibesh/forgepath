@@ -69,7 +69,7 @@ func handleVoice(c tele.Context, b *tele.Bot, database *db.DB, openaiClient *ai.
 
 	state, _ := database.GetState(userID)
 	if state.State == "idle" {
-		return c.Send("You can send voice messages when the bot is waiting for your text (writing, quiz, etc.)")
+		return c.Send("I can hear you during writing or quiz tasks! Start one with /write or /quiz")
 	}
 
 	return processTextInput(c, database, openaiClient, state, text)
@@ -146,7 +146,7 @@ func processWriting(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClie
 
 	wordCount := len(strings.Fields(text))
 	if wordCount < 5 {
-		return c.Send("Your text is too short. Write at least a few sentences (5+ words)!")
+		return c.Send("That's a bit short! Try to write at least a few sentences.")
 	}
 	if len(text) > 3000 {
 		text = text[:3000]
@@ -203,7 +203,7 @@ func processQuizTyping(c tele.Context, database *db.DB, state *db.UserState, tex
 		result := srs.Calculate(reps, interval, ease, 5)
 		database.UpdateWordReview(userID, wordID, result.IntervalDays, result.EaseFactor, result.Repetitions)
 		database.MarkReviewDone(userID, tzOffset)
-		return c.Send("\u2705 Correct! Great recall! \U0001F389")
+		return c.Send("\u2705 Yes! You got it! \U0001F389")
 	}
 
 	result := srs.Calculate(reps, interval, ease, 1)
@@ -211,11 +211,11 @@ func processQuizTyping(c tele.Context, database *db.DB, state *db.UserState, tex
 
 	word, _ := database.GetWordByID(wordID)
 	if word != nil {
-		return c.Send(fmt.Sprintf("\u274C Not quite.\n\nCorrect answer: *%s*\n(%s)\n\nYou'll see this word again soon!",
+		return c.Send(fmt.Sprintf("\u274C Close! The answer was: *%s*\n(%s)\n\nNo worries, you'll see it again!",
 			escapeMarkdown(word.Word), escapeMarkdown(word.Definition)),
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	}
-	return c.Send("\u274C Not quite. You'll see this word again soon!")
+	return c.Send("\u274C Not this time. You'll see it again soon!")
 }
 
 func processQuizSentence(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, state *db.UserState, text string) error {
@@ -226,11 +226,11 @@ func processQuizSentence(c tele.Context, database *db.DB, openaiClient *ai.OpenA
 	fmt.Sscanf(state.Context["word_id"], "%d", &wordID)
 
 	if len(text) < 5 {
-		return c.Send("Write a full sentence, please!")
+		return c.Send("Try writing a full sentence!")
 	}
 
 	if !strings.Contains(strings.ToLower(text), strings.ToLower(targetWord)) {
-		return c.Send(fmt.Sprintf("\u274C Please use *%s* in your sentence!", escapeMarkdown(targetWord)),
+		return c.Send(fmt.Sprintf("Try using the word *%s* in your sentence!", escapeMarkdown(targetWord)),
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	}
 
@@ -253,11 +253,11 @@ func processQuizSentence(c tele.Context, database *db.DB, openaiClient *ai.OpenA
 	if openaiClient != nil {
 		feedback, err := openaiClient.CheckSentences(text, targetWord, level, language)
 		if err == nil {
-			return c.Send("\u2705 Great sentence!\n\n"+feedback, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+			return c.Send("\u2705 Nice sentence!\n\n"+feedback, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 		}
 	}
 
-	return c.Send("\u2705 Great sentence! Keep practicing! \U0001F4AA")
+	return c.Send("\u2705 Nice sentence! Keep it up! \U0001F4AA")
 }
 
 func processMediaTask(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, state *db.UserState, text string) error {
@@ -268,7 +268,7 @@ func processMediaTask(c tele.Context, database *db.DB, openaiClient *ai.OpenAICl
 	mediaTitle := state.Context["media_title"]
 
 	if len(text) < 10 {
-		return c.Send("Write at least a few sentences!")
+		return c.Send("Try to write a bit more!")
 	}
 
 	database.ClearState(userID)
@@ -285,12 +285,12 @@ func processMediaTask(c tele.Context, database *db.DB, openaiClient *ai.OpenAICl
 	database.SaveMediaTaskResponse(userID, mediaID, text)
 	database.MarkReviewDone(userID, tzOffset)
 
-	c.Send("\u2705 Saved! Checking your sentences...")
+	c.Send("\u2705 Got it! Let me check...")
 
 	feedback, err := openaiClient.CheckSentences(text, mediaTitle, level, language)
 	if err != nil {
 		log.Printf("[user=%d] AI media feedback error: %v", userID, err)
-		return c.Send("Good job! Keep watching and writing! \U0001F4AA")
+		return c.Send("Good job! \U0001F4AA")
 	}
 
 	return c.Send(feedback, &tele.SendOptions{ParseMode: tele.ModeMarkdown})

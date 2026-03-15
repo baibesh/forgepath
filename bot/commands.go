@@ -17,11 +17,11 @@ import (
 func requireOnboarded(c tele.Context, database *db.DB) (*db.User, error) {
 	user, err := database.GetUser(c.Sender().ID)
 	if err != nil {
-		c.Send("Please /start first!")
+		c.Send("Hi! Type /start to get started.")
 		return nil, err
 	}
 	if !user.Onboarded {
-		c.Send("Please complete setup with /start first!")
+		c.Send("Let's finish setting up first! Type /start")
 		return nil, fmt.Errorf("not onboarded")
 	}
 	return user, nil
@@ -30,7 +30,7 @@ func requireOnboarded(c tele.Context, database *db.DB) (*db.User, error) {
 func warnActiveState(c tele.Context, database *db.DB) bool {
 	state, _ := database.GetState(c.Sender().ID)
 	if state.State != "idle" && state.State != "" {
-		c.Send("You have an active task. Use /cancel to cancel it first, or continue where you left off.")
+		c.Send("You're in the middle of something. Finish it or type /cancel first.")
 		return true
 	}
 	return false
@@ -45,21 +45,21 @@ func handleToday(c tele.Context, database *db.DB) error {
 
 	var tasks []string
 	if !streak.WordDone {
-		tasks = append(tasks, "\U0001F4D6 Word of the Day — /word")
+		tasks = append(tasks, "\U0001F31F New word — /word")
 	}
 	if !streak.WritingDone {
-		tasks = append(tasks, "\u270D\uFE0F Free Writing — /write")
+		tasks = append(tasks, "\u270D\uFE0F Writing — /write")
 	}
 	if !streak.ReviewDone {
-		tasks = append(tasks, "\U0001F4DD Quiz Review — /quiz")
+		tasks = append(tasks, "\U0001F9E9 Quiz — /quiz")
 	}
 
 	if len(tasks) == 0 {
-		return c.Send("\u2705 *All done for today!*\n\nGreat job! See you tomorrow \U0001F4AA",
+		return c.Send("\u2705 *All done for today!* Great job! See you tomorrow \U0001F4AA",
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	}
 
-	return c.Send("\U0001F4CB *Today's Tasks:*\n\n"+strings.Join(tasks, "\n"),
+	return c.Send("*What's left today:*\n\n"+strings.Join(tasks, "\n"),
 		&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
@@ -75,7 +75,7 @@ func handleWord(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 
 	word, err := database.GetRandomUnseen(user.ID, user.Level, user.Language)
 	if err != nil {
-		return c.Send("No new words available right now. You've learned them all! \U0001F389")
+		return c.Send("You've learned all available words! Amazing! \U0001F389")
 	}
 
 	grammar, _ := database.GetCurrentGrammarFocus(user.ID)
@@ -164,7 +164,7 @@ func handleQuiz(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 
 	words, err := database.GetWordsForReview(user.ID, 3)
 	if err != nil || len(words) == 0 {
-		return c.Send("No words to review right now! Learn some with /word first.")
+		return c.Send("Nothing to review yet! Learn some words first with /word")
 	}
 
 	for _, w := range words {
@@ -226,10 +226,10 @@ func handleSkip(c tele.Context, database *db.DB) error {
 	}
 
 	if user.SkipCount >= 2 {
-		return c.Send("\u274C You've already used both skips this week.\nKeep going! \U0001F4AA")
+		return c.Send("You've already taken 2 days off this week. You got this! \U0001F4AA")
 	}
 
-	return c.Send(fmt.Sprintf("\u23ED *Skip Today?*\n\nYou have *%d/2* skips left this week.", 2-user.SkipCount),
+	return c.Send(fmt.Sprintf("*Take a day off?*\n\nYou have *%d* day(s) off left this week.", 2-user.SkipCount),
 		&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: SkipConfirmKeyboard()})
 }
 
@@ -241,11 +241,11 @@ func handleWordsList(c tele.Context, database *db.DB) error {
 
 	words, err := database.GetUserWords(user.ID, 0, 20)
 	if err != nil || len(words) == 0 {
-		return c.Send("You haven't learned any words yet. Start with /word!")
+		return c.Send("No words yet! Start with /word to learn your first one.")
 	}
 
 	var sb strings.Builder
-	sb.WriteString("\U0001F4DA *Your Words:*\n\n")
+	sb.WriteString("\U0001F4DA *Words you know:*\n\n")
 	for i, w := range words {
 		sb.WriteString(fmt.Sprintf("%d. *%s* — %s\n", i+1, escapeMarkdown(w.Word), escapeMarkdown(w.Definition)))
 	}
