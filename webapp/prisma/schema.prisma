@@ -47,9 +47,8 @@ model Word {
   example      String?
   collocations String?    @default("")
   construction String?    @default("")
-  level        String     @default("A2")
-  language     String     @default("en")
-  created_at   DateTime?  @default(now())
+  level        String?
+  language     String?    @default("en")
   user_words   UserWord[]
 
   @@unique([word, language], map: "words_word_lang_unique")
