@@ -56,12 +56,12 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 			return c.Send(fmt.Sprintf(
 				"Hey, %s! %s\n\n"+
 					"You're learning %s, level *%s*\n\n"+
-					"Type /today to see what's next!",
+					"Pick what you want to do!",
 				user.FirstName, content.LanguageFlag(existing.Language),
 				content.LanguageName(existing.Language), existing.Level,
 			), &tele.SendOptions{
 				ParseMode:   tele.ModeMarkdown,
-				ReplyMarkup: &tele.ReplyMarkup{RemoveKeyboard: true},
+				ReplyMarkup: MainKeyboard(),
 			})
 		}
 

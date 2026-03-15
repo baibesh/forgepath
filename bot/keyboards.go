@@ -6,6 +6,23 @@ import (
 	tele "gopkg.in/telebot.v3"
 )
 
+func MainKeyboard() *tele.ReplyMarkup {
+	menu := &tele.ReplyMarkup{ResizeKeyboard: true}
+	menu.Reply(
+		menu.Row(
+			menu.Text("\U0001F31F New word"),
+			menu.Text("\u270D\uFE0F Write"),
+			menu.Text("\U0001F9E9 Quiz"),
+		),
+		menu.Row(
+			menu.Text("\U0001F4CB Today"),
+			menu.Text("\U0001F4CA Progress"),
+			menu.Text("\u2699\uFE0F Settings"),
+		),
+	)
+	return menu
+}
+
 func LanguageSelectKeyboard() *tele.ReplyMarkup {
 	menu := &tele.ReplyMarkup{}
 	menu.Inline(

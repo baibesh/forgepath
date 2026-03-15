@@ -13,11 +13,26 @@ import (
 	"github.com/baibesh/forgepath/srs"
 )
 
+var buttonCommands = map[string]string{
+	"\U0001F31F New word":    "/word",
+	"\u270D\uFE0F Write":    "/write",
+	"\U0001F9E9 Quiz":       "/quiz",
+	"\U0001F4CB Today":      "/today",
+	"\U0001F4CA Progress":   "/stats",
+	"\u2699\uFE0F Settings": "/settings",
+}
+
 func handleText(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) error {
 	userID := c.Sender().ID
 	text := strings.TrimSpace(c.Text())
 	if text == "" {
 		return nil
+	}
+
+	if cmd, ok := buttonCommands[text]; ok {
+		log.Printf("[user=%d] button -> %s", userID, cmd)
+		c.Message().Text = cmd
+		return routeButtonCommand(c, database, openaiClient, cmd)
 	}
 
 	state, err := database.GetState(userID)
@@ -27,6 +42,25 @@ func handleText(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 
 	log.Printf("[user=%d] text in state=%s len=%d", userID, state.State, len(text))
 	return processTextInput(c, database, openaiClient, state, text)
+}
+
+func routeButtonCommand(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, cmd string) error {
+	switch cmd {
+	case "/word":
+		return handleWord(c, database, openaiClient)
+	case "/write":
+		return handleWrite(c, database)
+	case "/quiz":
+		return handleQuiz(c, database, openaiClient)
+	case "/today":
+		return handleToday(c, database)
+	case "/stats":
+		return handleStats(c, database)
+	case "/settings":
+		return c.Send("\u2699\uFE0F *Settings*\n\nWhat do you want to change?",
+			&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: SettingsKeyboard()})
+	}
+	return nil
 }
 
 func handleVoice(c tele.Context, b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClient) error {
@@ -107,7 +141,7 @@ func handleOnboardingTzCustom(c tele.Context, database *db.DB, openaiClient *ai.
 	database.SetOnboarded(userID)
 	database.ClearState(userID)
 
-	c.Send(fmt.Sprintf("\u2705 Setup complete!\n\nTimezone: %s\n\nYour first word is coming! \U0001F680", FormatUTCOffset(offset)))
+	c.Send("\u2705 All set! Your first word is coming! \U0001F680")
 
 	user, _ := database.GetUser(userID)
 	if user != nil {
@@ -118,12 +152,12 @@ func handleOnboardingTzCustom(c tele.Context, database *db.DB, openaiClient *ai.
 			database.MarkWordDone(userID, user.TzOffset)
 			c.Send(FormatWordOfDay(word, grammar), &tele.SendOptions{
 				ParseMode:   tele.ModeMarkdown,
-				ReplyMarkup: ListenKeyboard(word.ID),
+				ReplyMarkup: MainKeyboard(),
 			})
 			return sendQuizForWord(c, database, word, openaiClient)
 		}
 	}
-	return nil
+	return c.Send("You're all set! Use the buttons below.", &tele.SendOptions{ReplyMarkup: MainKeyboard()})
 }
 
 func handleSettingsTzCustom(c tele.Context, database *db.DB, text string) error {
