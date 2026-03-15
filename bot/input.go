@@ -45,6 +45,11 @@ func handleText(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 }
 
 func routeButtonCommand(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, cmd string) error {
+	state, _ := database.GetState(c.Sender().ID)
+	if state.State != "idle" && state.State != "" {
+		database.ClearState(c.Sender().ID)
+	}
+
 	switch cmd {
 	case "/word":
 		return handleWord(c, database, openaiClient)
