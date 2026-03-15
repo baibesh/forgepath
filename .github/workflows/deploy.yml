@@ -42,3 +42,52 @@ jobs:
             systemctl is-active forgepath
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+  deploy-webapp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install and build
+        working-directory: webapp
+        run: |
+          npm ci
+          npx prisma generate
+          npm run build
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Deploy standalone to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: root
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: webapp/.next/standalone/.,webapp/.next/static,webapp/public
+          target: /opt/forgepath-webapp/
+          strip_components: 1
+
+      - name: Restart webapp
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: root
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          envs: DATABASE_URL,BOT_TOKEN
+          script: |
+            cd /opt/forgepath-webapp
+            cp -r .next/static .next/standalone/.next/static 2>/dev/null || true
+            cp -r public .next/standalone/public 2>/dev/null || true
+            echo "DATABASE_URL=${DATABASE_URL}" > .next/standalone/.env
+            echo "BOT_TOKEN=${BOT_TOKEN}" >> .next/standalone/.env
+            cd .next/standalone
+            pm2 restart forgepath-webapp || pm2 start server.js --name forgepath-webapp
+            sleep 2
+            pm2 status forgepath-webapp
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}

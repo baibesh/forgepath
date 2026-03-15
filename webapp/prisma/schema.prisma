@@ -1,0 +1,112 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 BigInt      @id
+  username           String?
+  first_name         String?     @default("")
+  tz_offset          Int         @default(5)
+  level              String      @default("A2")
+  language           String      @default("en")
+  active             Boolean     @default(true)
+  onboarded          Boolean     @default(false)
+  skip_count         Int         @default(0)
+  current_grammar_week Int       @default(1)
+  created_at         DateTime    @default(now())
+  streaks            Streak[]
+  user_words         UserWord[]
+  writings           Writing[]
+  user_state         UserState?
+
+  @@map("users")
+}
+
+model Streak {
+  user_id      BigInt
+  date         DateTime @db.Date
+  completed    Boolean? @default(false)
+  word_done    Boolean? @default(false)
+  writing_done Boolean? @default(false)
+  review_done  Boolean? @default(false)
+  user         User     @relation(fields: [user_id], references: [id])
+
+  @@id([user_id, date])
+  @@map("streaks")
+}
+
+model Word {
+  id           Int        @id @default(autoincrement())
+  word         String
+  definition   String?
+  example      String?
+  collocations String?    @default("")
+  construction String?    @default("")
+  level        String     @default("A2")
+  language     String     @default("en")
+  created_at   DateTime?  @default(now())
+  user_words   UserWord[]
+
+  @@unique([word, language], map: "words_word_lang_unique")
+  @@map("words")
+}
+
+model UserWord {
+  user_id       BigInt
+  word_id       Int
+  seen_at       DateTime  @default(now())
+  next_review   DateTime?
+  interval_days Int       @default(1)
+  ease_factor   Float     @default(2.5) @db.Real
+  repetitions   Int       @default(0)
+  score         Int       @default(0)
+  user          User      @relation(fields: [user_id], references: [id])
+  word          Word      @relation(fields: [word_id], references: [id])
+
+  @@id([user_id, word_id])
+  @@map("user_words")
+}
+
+model UserState {
+  user_id    BigInt   @id
+  state      String   @default("idle")
+  context    Json     @default("{}")
+  updated_at DateTime @default(now())
+  user       User     @relation(fields: [user_id], references: [id])
+
+  @@map("user_state")
+}
+
+model Writing {
+  id            Int      @id @default(autoincrement())
+  user_id       BigInt
+  topic         String?
+  grammar_focus String?
+  text          String?
+  feedback      String?
+  word_count    Int      @default(0)
+  created_at    DateTime @default(now())
+  user          User     @relation(fields: [user_id], references: [id])
+
+  @@map("writings")
+}
+
+model GrammarWeek {
+  week_num   Int
+  family     String
+  focus      String
+  tense_name String
+  anchor     String
+  markers    String
+  formula    String
+  example    String
+  language   String   @default("en")
+
+  @@unique([week_num, language], map: "grammar_weeks_week_lang_unique")
+  @@map("grammar_weeks")
+}
