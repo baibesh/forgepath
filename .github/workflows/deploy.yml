@@ -18,7 +18,7 @@ jobs:
       - name: Build binary
         run: GOOS=linux GOARCH=amd64 go build -o forgepath .
 
-      - name: Stop bot before upload
+      - name: Stop bot
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -72,54 +72,54 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      - name: Pack standalone bundle
+      - name: Prepare bundle
         working-directory: webapp
         run: |
           cp -r .next/static .next/standalone/.next/static
           mkdir -p .next/standalone/public
           cp -r public/. .next/standalone/public/ 2>/dev/null || true
           tar -czf webapp-bundle.tar.gz -C .next/standalone .
+          ls -lh webapp-bundle.tar.gz
 
-      - name: Upload bundle
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: root
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          source: webapp/webapp-bundle.tar.gz
-          target: /tmp/
-          strip_components: 1
-
-      - name: Deploy and restart
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: root
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          envs: DATABASE_URL,BOT_TOKEN
-          script_stop: true
-          script: |
-            BACKUP=/opt/forgepath-webapp-backup
-            rm -rf $BACKUP
-            cp -r /opt/forgepath-webapp $BACKUP 2>/dev/null || true
-            rm -rf /opt/forgepath-webapp/.next /opt/forgepath-webapp/server.js /opt/forgepath-webapp/node_modules /opt/forgepath-webapp/package.json
-            tar -xzf /tmp/webapp-bundle.tar.gz -C /opt/forgepath-webapp/
-            rm -f /tmp/webapp-bundle.tar.gz
-            cd /opt/forgepath-webapp
-            echo "DATABASE_URL=${DATABASE_URL}" > .env
-            echo "BOT_TOKEN=${BOT_TOKEN}" >> .env
-            pm2 restart forgepath-webapp || pm2 start server.js --name forgepath-webapp
-            sleep 5
-            if curl -sf --max-time 10 http://localhost:3000/ > /dev/null; then
-              echo "Health check OK"
-              rm -rf $BACKUP
-            else
-              echo "Health check FAILED, rolling back"
-              rm -rf /opt/forgepath-webapp
-              mv $BACKUP /opt/forgepath-webapp
-              pm2 restart forgepath-webapp
-              exit 1
-            fi
+      - name: Upload and deploy
         env:
+          SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        working-directory: webapp
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $SERVER_HOST >> ~/.ssh/known_hosts 2>/dev/null
+
+          scp -i ~/.ssh/deploy_key webapp-bundle.tar.gz root@$SERVER_HOST:/tmp/webapp-bundle.tar.gz
+
+          ssh -i ~/.ssh/deploy_key root@$SERVER_HOST bash -s << 'DEPLOY'
+          set -e
+          pm2 stop forgepath-webapp || true
+          rm -rf /opt/forgepath-webapp/.next /opt/forgepath-webapp/server.js /opt/forgepath-webapp/node_modules /opt/forgepath-webapp/package.json
+          tar -xzf /tmp/webapp-bundle.tar.gz -C /opt/forgepath-webapp/
+          rm -f /tmp/webapp-bundle.tar.gz
+          DEPLOY
+
+          ssh -i ~/.ssh/deploy_key root@$SERVER_HOST bash -s << ENVDEPLOY
+          cd /opt/forgepath-webapp
+          echo "DATABASE_URL=${DATABASE_URL}" > .env
+          echo "BOT_TOKEN=${BOT_TOKEN}" >> .env
+          pm2 start server.js --name forgepath-webapp 2>/dev/null || pm2 restart forgepath-webapp
+          for i in 1 2 3 4 5; do
+            if curl -sf --max-time 5 http://localhost:3000/ > /dev/null 2>&1; then
+              echo "Health check passed on attempt \$i"
+              exit 0
+            fi
+            echo "Waiting... attempt \$i"
+            sleep 2
+          done
+          echo "Health check failed after 5 attempts"
+          pm2 logs forgepath-webapp --lines 10 --nostream
+          exit 1
+          ENVDEPLOY
+
+          rm -f ~/.ssh/deploy_key
