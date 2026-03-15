@@ -35,9 +35,9 @@ func DefaultGrammar(language string) *GrammarWeek {
 	case "de":
 		return &GrammarWeek{
 			TenseName: "Präsens",
-			Family:    "Simple",
-			Anchor:    "\U0001F504 Karussell — wiederholt sich immer wieder",
-			Formula:   "S + Verb (konjugiert: ich -e, du -st, er -t)",
+			Family:    "Einfach",
+			Anchor:    "\U0001F504 Карусель — повторяется снова и снова. Präsens — привычки и факты.",
+			Formula:   "S + Verb (ich -e, du -st, er/sie -t, wir -en)",
 			Markers:   "immer, oft, jeden Tag, manchmal",
 			Language:  "de",
 		}
@@ -45,7 +45,7 @@ func DefaultGrammar(language string) *GrammarWeek {
 		return &GrammarWeek{
 			TenseName: "Past Simple",
 			Family:    "Simple",
-			Anchor:    "\U0001F6AA Closed door — done and finished",
+			Anchor:    "\U0001F6AA Закрытая дверь — действие завершено, дверь захлопнулась. Представь дверь, которая закрылась — назад не вернёшься.",
 			Formula:   "S + V2 (ed / irregular)",
 			Markers:   "yesterday, last week, ago",
 			Language:  "en",
