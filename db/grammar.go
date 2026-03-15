@@ -2,18 +2,6 @@ package db
 
 import "context"
 
-type GrammarWeek struct {
-	WeekNum   int
-	Family    string
-	Focus     string
-	TenseName string
-	Anchor    string
-	Markers   string
-	Formula   string
-	Example   string
-	Language  string
-}
-
 func (d *DB) GetGrammarWeek(weekNum int, language string) (*GrammarWeek, error) {
 	var g GrammarWeek
 	err := d.Pool.QueryRow(context.Background(),

@@ -2,19 +2,7 @@ package db
 
 import (
 	"context"
-	"time"
 )
-
-type Writing struct {
-	ID           int
-	UserID       int64
-	Topic        string
-	GrammarFocus string
-	Text         string
-	Feedback     string
-	WordCount    int
-	CreatedAt    time.Time
-}
 
 func (d *DB) SaveWriting(userID int64, topic, grammarFocus, text string, wordCount int) (int, error) {
 	var id int

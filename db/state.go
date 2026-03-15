@@ -3,13 +3,8 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"time"
 )
-
-type UserState struct {
-	UserID  int64
-	State   string
-	Context map[string]string
-}
 
 func (d *DB) GetState(userID int64) (*UserState, error) {
 	var state string
@@ -47,4 +42,26 @@ func (d *DB) SetState(userID int64, state string, ctx map[string]string) error {
 
 func (d *DB) ClearState(userID int64) error {
 	return d.SetState(userID, "idle", map[string]string{})
+}
+
+func (d *DB) GetStaleStateAge(userID int64) (time.Duration, bool) {
+	var updatedAt time.Time
+	err := d.Pool.QueryRow(context.Background(),
+		`SELECT updated_at FROM user_state WHERE user_id = $1 AND state != 'idle'`, userID,
+	).Scan(&updatedAt)
+	if err != nil {
+		return 0, false
+	}
+	return time.Since(updatedAt), true
+}
+
+func (d *DB) GetMediaTitle(userID int64, mediaID int) string {
+	var title string
+	err := d.Pool.QueryRow(context.Background(),
+		`SELECT mr.title FROM user_media um JOIN media_resources mr ON mr.id = um.media_id
+		 WHERE um.user_id = $1 AND um.media_id = $2`, userID, mediaID).Scan(&title)
+	if err != nil {
+		return "the video"
+	}
+	return title
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/baibesh/forgepath/db"
+	"github.com/baibesh/forgepath/seed"
 	"github.com/joho/godotenv"
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -215,6 +216,7 @@ func main() {
 	defer database.Close()
 
 	database.Migrate(databaseURL)
+	seed.Run(database.Pool)
 
 	client := openai.NewClient(apiKey)
 	totalInserted := 0

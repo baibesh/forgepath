@@ -1,7 +1,6 @@
 package cron
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"math/rand"
@@ -74,15 +73,12 @@ func (j *Jobs) safeSend(user db.User, fn func(db.User)) {
 }
 
 func (j *Jobs) checkStateTimeout(userID int64) {
-	var updatedAt time.Time
-	err := j.db.Pool.QueryRow(context.Background(),
-		`SELECT updated_at FROM user_state WHERE user_id = $1 AND state != 'idle'`, userID,
-	).Scan(&updatedAt)
-	if err != nil {
+	age, found := j.db.GetStaleStateAge(userID)
+	if !found {
 		return
 	}
-	if time.Since(updatedAt) > 2*time.Hour {
-		log.Printf("[cron][user=%d] clearing stale state (age=%s)", userID, time.Since(updatedAt).Round(time.Minute))
+	if age > 2*time.Hour {
+		log.Printf("[cron][user=%d] clearing stale state (age=%s)", userID, age.Round(time.Minute))
 		j.db.ClearState(userID)
 	}
 }
@@ -196,13 +192,7 @@ func (j *Jobs) sendMediaTask(user db.User) {
 		grammarFocus = grammar.TenseName
 	}
 
-	var mediaTitle string
-	err = j.db.Pool.QueryRow(context.Background(),
-		`SELECT mr.title FROM user_media um JOIN media_resources mr ON mr.id = um.media_id
-		 WHERE um.user_id = $1 AND um.media_id = $2`, user.ID, um.MediaID).Scan(&mediaTitle)
-	if err != nil {
-		mediaTitle = "the video"
-	}
+	mediaTitle := j.db.GetMediaTitle(user.ID, um.MediaID)
 
 	j.db.SetState(user.ID, "waiting_media_task", map[string]string{
 		"media_id":    fmt.Sprintf("%d", um.MediaID),

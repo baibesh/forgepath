@@ -13,6 +13,7 @@ import (
 	"github.com/baibesh/forgepath/config"
 	"github.com/baibesh/forgepath/cron"
 	"github.com/baibesh/forgepath/db"
+	"github.com/baibesh/forgepath/seed"
 )
 
 func main() {
@@ -22,6 +23,7 @@ func main() {
 	defer database.Close()
 
 	database.Migrate(cfg.DatabaseURL)
+	seed.Run(database.Pool)
 
 	b, err := tele.NewBot(tele.Settings{
 		Token:  cfg.BotToken,

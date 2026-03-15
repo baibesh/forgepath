@@ -3,33 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
-	"time"
 )
-
-type MediaResource struct {
-	ID           int
-	Title        string
-	URL          string
-	MediaType    string
-	Level        string
-	Topic        string
-	Duration     string
-	Active       bool
-	Tags         string
-	ViewCount    int
-	HasSubtitles bool
-	Description  string
-	Language     string
-}
-
-type UserMedia struct {
-	UserID       int64
-	MediaID      int
-	SentAt       time.Time
-	TaskSent     bool
-	TaskResponse string
-	Completed    bool
-}
 
 func (d *DB) GetUnseenMedia(userID int64, level, language string) (*MediaResource, error) {
 	var m MediaResource

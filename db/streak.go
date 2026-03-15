@@ -5,19 +5,6 @@ import (
 	"time"
 )
 
-type TodayStreak struct {
-	WordDone    bool
-	WritingDone bool
-	ReviewDone  bool
-}
-
-type WeeklyStats struct {
-	Days         int
-	WordsDone    int
-	WritingsDone int
-	ReviewsDone  int
-}
-
 func UserLocalDate(tzOffset int) string {
 	return time.Now().UTC().Add(time.Duration(tzOffset) * time.Hour).Format("2006-01-02")
 }

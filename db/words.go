@@ -2,30 +2,7 @@ package db
 
 import (
 	"context"
-	"time"
 )
-
-type Word struct {
-	ID           int
-	Word         string
-	Definition   string
-	Example      string
-	Collocations string
-	Construction string
-	Level        string
-	Language     string
-}
-
-type UserWord struct {
-	UserID       int64
-	WordID       int
-	SeenAt       time.Time
-	NextReview   time.Time
-	IntervalDays int
-	EaseFactor   float64
-	Repetitions  int
-	Score        int
-}
 
 func (d *DB) GetWordByID(id int) (*Word, error) {
 	var w Word

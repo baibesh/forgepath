@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/baibesh/forgepath/db"
+	"github.com/baibesh/forgepath/seed"
 	"github.com/joho/godotenv"
 )
 
@@ -202,6 +203,7 @@ func main() {
 	defer database.Close()
 
 	database.Migrate(databaseURL)
+	seed.Run(database.Pool)
 
 	totalInserted := 0
 

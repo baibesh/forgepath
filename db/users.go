@@ -2,22 +2,7 @@ package db
 
 import (
 	"context"
-	"time"
 )
-
-type User struct {
-	ID                 int64
-	Username           string
-	FirstName          string
-	TzOffset           int
-	Level              string
-	Language           string
-	Active             bool
-	Onboarded          bool
-	SkipCount          int
-	CurrentGrammarWeek int
-	CreatedAt          time.Time
-}
 
 func (d *DB) CreateUser(id int64, username, firstName string) error {
 	_, err := d.Pool.Exec(context.Background(),
