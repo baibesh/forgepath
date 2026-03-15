@@ -74,19 +74,25 @@ Student wrote:
 	return o.complete(prompt)
 }
 
-func (o *OpenAIClient) GenerateQuizOptions(word, definition string, count int) ([]string, error) {
+func (o *OpenAIClient) GenerateQuizOptions(word, definition, language string, count int) ([]string, error) {
 	if o == nil {
-		return defaultQuizOptions(definition), nil
+		return defaultQuizOptions(definition, language), nil
+	}
+
+	defLang := "Russian"
+	if language == "de" {
+		defLang = "Russian"
 	}
 
 	prompt := fmt.Sprintf(`Generate %d wrong answer options for a vocabulary quiz.
-The correct answer is: "%s" (meaning: %s)
-Generate %d WRONG definitions that are plausible but incorrect for A2 learners.
-Return ONLY the wrong options, one per line, no numbering.`, count, word, definition, count)
+The word is: "%s" and the correct definition is: "%s"
+The definitions are written in %s. Generate %d WRONG definitions in %s that are plausible but incorrect.
+Keep them short (1-3 words), similar style to the correct definition.
+Return ONLY the wrong options, one per line, no numbering, no quotes.`, count, word, definition, defLang, count, defLang)
 
 	text, err := o.complete(prompt)
 	if err != nil {
-		return defaultQuizOptions(definition), nil
+		return defaultQuizOptions(definition, language), nil
 	}
 
 	lines := strings.Split(strings.TrimSpace(text), "\n")
@@ -98,7 +104,7 @@ Return ONLY the wrong options, one per line, no numbering.`, count, word, defini
 		}
 	}
 	if len(options) < count {
-		return defaultQuizOptions(definition), nil
+		return defaultQuizOptions(definition, language), nil
 	}
 	return options[:count], nil
 }
@@ -199,11 +205,18 @@ func (o *OpenAIClient) SpeechToText(filePath string) (string, error) {
 	return strings.TrimSpace(resp.Text), nil
 }
 
-func defaultQuizOptions(definition string) []string {
+func defaultQuizOptions(definition, language string) []string {
 	defaults := []string{
-		"to make something bigger",
-		"to feel very happy",
-		"to move quickly",
+		"увеличить",
+		"радоваться",
+		"бежать быстро",
+	}
+	if language == "de" {
+		defaults = []string{
+			"vergrößern",
+			"sich freuen",
+			"schnell laufen",
+		}
 	}
 	var result []string
 	for _, d := range defaults {

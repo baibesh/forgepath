@@ -11,6 +11,7 @@ import (
 	"github.com/baibesh/forgepath/ai"
 	"github.com/baibesh/forgepath/content"
 	"github.com/baibesh/forgepath/db"
+	"github.com/baibesh/forgepath/srs"
 )
 
 func handleToday(c tele.Context, database *db.DB) error {
@@ -88,7 +89,7 @@ func sendQuizForWord(c tele.Context, database *db.DB, word *db.Word, openaiClien
 	}
 
 	options := []string{word.Definition}
-	wrongOptions, _ := openaiClient.GenerateQuizOptions(word.Word, word.Definition, 3)
+	wrongOptions, _ := openaiClient.GenerateQuizOptions(word.Word, word.Definition, word.Language, 3)
 	options = append(options, wrongOptions...)
 
 	rand.Shuffle(len(options), func(i, j int) {
@@ -103,8 +104,24 @@ func sendQuizForWord(c tele.Context, database *db.DB, word *db.Word, openaiClien
 		}
 	}
 
-	return c.Send(FormatQuizFillBlank(word, options, correctIdx),
-		&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: QuizKeyboard(word.ID, options, correctIdx)})
+	poll := &tele.Poll{
+		Type:          tele.PollQuiz,
+		Question:      fmt.Sprintf("What does \"%s\" mean?", word.Word),
+		CorrectOption: correctIdx,
+		Anonymous:     false,
+		Explanation:   fmt.Sprintf("%s — %s\n%s", word.Word, word.Definition, word.Example),
+	}
+	poll.AddOptions(options...)
+
+	msg, err := poll.Send(c.Bot(), c.Recipient(), nil)
+	if err != nil {
+		return err
+	}
+
+	if msg != nil && msg.Poll != nil {
+		RegisterQuizPoll(msg.Poll.ID, c.Sender().ID, word.ID, correctIdx)
+	}
+	return nil
 }
 
 func handleQuiz(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) error {
@@ -196,4 +213,41 @@ func handleWordsList(c tele.Context, database *db.DB) error {
 	}
 
 	return c.Send(sb.String(), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+}
+
+func handlePollAnswer(c tele.Context, database *db.DB) error {
+	answer := c.PollAnswer()
+	if answer == nil {
+		return nil
+	}
+
+	entry, ok := GetQuizPoll(answer.PollID)
+	if !ok {
+		return nil
+	}
+
+	userID := entry.UserID
+	wordID := entry.WordID
+
+	user, _ := database.GetUser(userID)
+	tzOffset := 5
+	if user != nil {
+		tzOffset = user.TzOffset
+	}
+
+	reps, interval, ease, _ := database.GetUserWordSRS(userID, wordID)
+
+	isCorrect := len(answer.Options) > 0 && answer.Options[0] == entry.CorrectIdx
+	if isCorrect {
+		result := srs.Calculate(reps, interval, ease, 4)
+		database.UpdateWordReview(userID, wordID, result.IntervalDays, result.EaseFactor, result.Repetitions)
+		database.MarkReviewDone(userID, tzOffset)
+		log.Printf("[user=%d] quiz poll correct word=%d", userID, wordID)
+	} else {
+		result := srs.Calculate(reps, interval, ease, 1)
+		database.UpdateWordReview(userID, wordID, result.IntervalDays, result.EaseFactor, result.Repetitions)
+		log.Printf("[user=%d] quiz poll wrong word=%d", userID, wordID)
+	}
+
+	return nil
 }

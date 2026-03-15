@@ -128,6 +128,10 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 
 	RegisterCallbacks(b, database, openaiClient)
 
+	b.Handle(tele.OnPollAnswer, func(c tele.Context) error {
+		return handlePollAnswer(c, database)
+	})
+
 	b.Handle(tele.OnText, func(c tele.Context) error {
 		return handleText(c, database, openaiClient)
 	})

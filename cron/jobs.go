@@ -263,7 +263,7 @@ func (j *Jobs) sendMessage(userID int64, text string) {
 }
 
 func (j *Jobs) sendQuizWithButtons(userID int64, word *db.Word) {
-	wrongOptions, _ := j.openai.GenerateQuizOptions(word.Word, word.Definition, 3)
+	wrongOptions, _ := j.openai.GenerateQuizOptions(word.Word, word.Definition, word.Language, 3)
 	options := []string{word.Definition}
 	options = append(options, wrongOptions...)
 
@@ -279,24 +279,24 @@ func (j *Jobs) sendQuizWithButtons(userID int64, word *db.Word) {
 		}
 	}
 
-	var sb strings.Builder
-	sb.WriteString("\U0001F9E0 *Quick Review*\n\n")
-	sb.WriteString(fmt.Sprintf("What does *%s* mean?\n\n", word.Word))
-	letters := []string{"A", "B", "C", "D"}
-	for i, opt := range options {
-		if i < 4 {
-			sb.WriteString(fmt.Sprintf("%s) %s\n", letters[i], opt))
-		}
+	poll := &tele.Poll{
+		Type:          tele.PollQuiz,
+		Question:      fmt.Sprintf("What does \"%s\" mean?", word.Word),
+		CorrectOption: correctIdx,
+		Anonymous:     false,
+		Explanation:   fmt.Sprintf("%s — %s\n%s", word.Word, word.Definition, word.Example),
 	}
+	poll.AddOptions(options...)
 
 	recipient := &tele.User{ID: userID}
-	_, err := j.bot.Send(recipient, sb.String(),
-		&tele.SendOptions{
-			ParseMode:   tele.ModeMarkdown,
-			ReplyMarkup: bot.QuizKeyboard(word.ID, options, correctIdx),
-		})
+	msg, err := j.bot.Send(recipient, poll)
 	if err != nil {
-		log.Printf("[cron][user=%d] send quiz error: %v", userID, err)
+		log.Printf("[cron][user=%d] send quiz poll error: %v", userID, err)
+		return
+	}
+
+	if msg != nil && msg.Poll != nil {
+		bot.RegisterQuizPoll(msg.Poll.ID, userID, word.ID, correctIdx)
 	}
 }
 

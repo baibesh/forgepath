@@ -23,7 +23,7 @@ func FormatWordOfDay(word *db.Word, grammar *db.GrammarWeek) string {
 
 	if grammar != nil {
 		sb.WriteString(fmt.Sprintf("\U0001F3AF Grammar: %s — %s\n", grammar.Family, grammar.TenseName))
-		sb.WriteString(fmt.Sprintf("\U0001F6AA Anchor: %s\n", escapeMarkdown(grammar.Anchor)))
+		sb.WriteString(fmt.Sprintf("\U0001F4A1 Think of: %s\n", escapeMarkdown(grammar.Anchor)))
 		sb.WriteString(fmt.Sprintf("\U0001F4CD Markers: %s\n", escapeMarkdown(grammar.Markers)))
 	}
 
@@ -100,7 +100,7 @@ func FormatWritingPrompt(topic, grammarFocus string, grammar *db.GrammarWeek, la
 	sb.WriteString(fmt.Sprintf("\U0001F3AF Grammar: %s\n", escapeMarkdown(grammarFocus)))
 
 	if grammar != nil {
-		sb.WriteString(fmt.Sprintf("\U0001F6AA %s\n\n", escapeMarkdown(grammar.Anchor)))
+		sb.WriteString(fmt.Sprintf("\U0001F4A1 %s\n\n", escapeMarkdown(grammar.Anchor)))
 		sb.WriteString(fmt.Sprintf("*Topic:* \"%s\"\n\n", escapeMarkdown(topic)))
 		sb.WriteString(fmt.Sprintf("\U0001F4CD Formula: %s\n", escapeMarkdown(grammar.Formula)))
 		sb.WriteString(fmt.Sprintf("\U0001F4CD Markers: %s\n\n", escapeMarkdown(grammar.Markers)))
