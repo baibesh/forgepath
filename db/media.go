@@ -19,6 +19,7 @@ type MediaResource struct {
 	ViewCount    int
 	HasSubtitles bool
 	Description  string
+	Language     string
 }
 
 type UserMedia struct {
@@ -30,37 +31,38 @@ type UserMedia struct {
 	Completed    bool
 }
 
-func (d *DB) GetUnseenMedia(userID int64, level string) (*MediaResource, error) {
+func (d *DB) GetUnseenMedia(userID int64, level, language string) (*MediaResource, error) {
 	var m MediaResource
 	err := d.Pool.QueryRow(context.Background(),
 		`SELECT mr.id, mr.title, mr.url, mr.media_type, mr.level,
 		        COALESCE(mr.topic,''), COALESCE(mr.duration,''), mr.active,
 		        COALESCE(mr.tags,''), COALESCE(mr.view_count,0),
-		        COALESCE(mr.has_subtitles,false), COALESCE(mr.description,'')
+		        COALESCE(mr.has_subtitles,false), COALESCE(mr.description,''),
+		        COALESCE(mr.language,'en')
 		 FROM media_resources mr
-		 WHERE mr.active = true AND mr.level = $2
+		 WHERE mr.active = true AND mr.level = $2 AND COALESCE(mr.language,'en') = $3
 		   AND mr.id NOT IN (SELECT media_id FROM user_media WHERE user_id = $1)
-		 ORDER BY mr.view_count DESC, RANDOM() LIMIT 1`, userID, level,
+		 ORDER BY mr.view_count DESC, RANDOM() LIMIT 1`, userID, level, language,
 	).Scan(&m.ID, &m.Title, &m.URL, &m.MediaType, &m.Level, &m.Topic, &m.Duration, &m.Active,
-		&m.Tags, &m.ViewCount, &m.HasSubtitles, &m.Description)
+		&m.Tags, &m.ViewCount, &m.HasSubtitles, &m.Description, &m.Language)
 	if err != nil {
 		return nil, err
 	}
 	return &m, nil
 }
 
-// SearchMedia finds media matching tags/topic keywords, prioritizing popular unseen content
-func (d *DB) SearchMedia(userID int64, level string, keywords []string) (*MediaResource, error) {
-	// Build ILIKE conditions for tags and topic
+// SearchMedia finds media matching tags/topic keywords, prioritizing popular unseen content.
+func (d *DB) SearchMedia(userID int64, level, language string, keywords []string) (*MediaResource, error) {
 	query := `SELECT mr.id, mr.title, mr.url, mr.media_type, mr.level,
 		        COALESCE(mr.topic,''), COALESCE(mr.duration,''), mr.active,
 		        COALESCE(mr.tags,''), COALESCE(mr.view_count,0),
-		        COALESCE(mr.has_subtitles,false), COALESCE(mr.description,'')
+		        COALESCE(mr.has_subtitles,false), COALESCE(mr.description,''),
+		        COALESCE(mr.language,'en')
 		 FROM media_resources mr
-		 WHERE mr.active = true AND mr.level = $1
+		 WHERE mr.active = true AND mr.level = $1 AND COALESCE(mr.language,'en') = $3
 		   AND mr.id NOT IN (SELECT media_id FROM user_media WHERE user_id = $2)
 		   AND (`
-	args := []interface{}{level, userID}
+	args := []interface{}{level, userID, language}
 
 	for i, kw := range keywords {
 		if i > 0 {
@@ -75,10 +77,10 @@ func (d *DB) SearchMedia(userID int64, level string, keywords []string) (*MediaR
 	var m MediaResource
 	err := d.Pool.QueryRow(context.Background(), query, args...).Scan(
 		&m.ID, &m.Title, &m.URL, &m.MediaType, &m.Level, &m.Topic, &m.Duration, &m.Active,
-		&m.Tags, &m.ViewCount, &m.HasSubtitles, &m.Description)
+		&m.Tags, &m.ViewCount, &m.HasSubtitles, &m.Description, &m.Language)
 	if err != nil {
 		// Fallback to any unseen media
-		return d.GetUnseenMedia(userID, level)
+		return d.GetUnseenMedia(userID, level, language)
 	}
 	return &m, nil
 }
@@ -122,13 +124,14 @@ func (d *DB) SaveMediaTaskResponse(userID int64, mediaID int, response string) e
 	return err
 }
 
-func (d *DB) GetTodayUnsentMedia(userID int64) (*UserMedia, error) {
+func (d *DB) GetTodayUnsentMedia(userID int64, tzOffset int) (*UserMedia, error) {
+	today := UserLocalDate(tzOffset)
 	var um UserMedia
 	err := d.Pool.QueryRow(context.Background(),
 		`SELECT user_id, media_id, sent_at, task_sent, COALESCE(task_response,''), completed
 		 FROM user_media
-		 WHERE user_id = $1 AND DATE(sent_at) = CURRENT_DATE AND task_sent = false
-		 LIMIT 1`, userID,
+		 WHERE user_id = $1 AND DATE(sent_at) = $2::DATE AND task_sent = false
+		 LIMIT 1`, userID, today,
 	).Scan(&um.UserID, &um.MediaID, &um.SentAt, &um.TaskSent, &um.TaskResponse, &um.Completed)
 	if err != nil {
 		return nil, err

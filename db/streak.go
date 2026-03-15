@@ -18,8 +18,13 @@ type WeeklyStats struct {
 	ReviewsDone  int
 }
 
-func (d *DB) MarkWordDone(userID int64) error {
-	today := time.Now().UTC().Format("2006-01-02")
+// UserLocalDate returns the user's current local date string based on tz_offset.
+func UserLocalDate(tzOffset int) string {
+	return time.Now().UTC().Add(time.Duration(tzOffset) * time.Hour).Format("2006-01-02")
+}
+
+func (d *DB) MarkWordDone(userID int64, tzOffset int) error {
+	today := UserLocalDate(tzOffset)
 	_, err := d.Pool.Exec(context.Background(),
 		`INSERT INTO streaks (user_id, date, word_done) VALUES ($1, $2, true)
 		 ON CONFLICT (user_id, date) DO UPDATE SET word_done = true`,
@@ -27,8 +32,8 @@ func (d *DB) MarkWordDone(userID int64) error {
 	return err
 }
 
-func (d *DB) MarkWritingDone(userID int64) error {
-	today := time.Now().UTC().Format("2006-01-02")
+func (d *DB) MarkWritingDone(userID int64, tzOffset int) error {
+	today := UserLocalDate(tzOffset)
 	_, err := d.Pool.Exec(context.Background(),
 		`INSERT INTO streaks (user_id, date, writing_done) VALUES ($1, $2, true)
 		 ON CONFLICT (user_id, date) DO UPDATE SET writing_done = true`,
@@ -36,8 +41,8 @@ func (d *DB) MarkWritingDone(userID int64) error {
 	return err
 }
 
-func (d *DB) MarkReviewDone(userID int64) error {
-	today := time.Now().UTC().Format("2006-01-02")
+func (d *DB) MarkReviewDone(userID int64, tzOffset int) error {
+	today := UserLocalDate(tzOffset)
 	_, err := d.Pool.Exec(context.Background(),
 		`INSERT INTO streaks (user_id, date, review_done) VALUES ($1, $2, true)
 		 ON CONFLICT (user_id, date) DO UPDATE SET review_done = true`,
@@ -45,8 +50,8 @@ func (d *DB) MarkReviewDone(userID int64) error {
 	return err
 }
 
-func (d *DB) GetTodayStreak(userID int64) (*TodayStreak, error) {
-	today := time.Now().UTC().Format("2006-01-02")
+func (d *DB) GetTodayStreak(userID int64, tzOffset int) (*TodayStreak, error) {
+	today := UserLocalDate(tzOffset)
 	var s TodayStreak
 	err := d.Pool.QueryRow(context.Background(),
 		`SELECT COALESCE(word_done, false), COALESCE(writing_done, false), COALESCE(review_done, false)
@@ -58,7 +63,8 @@ func (d *DB) GetTodayStreak(userID int64) (*TodayStreak, error) {
 	return &s, nil
 }
 
-func (d *DB) GetCurrentStreak(userID int64) (int, error) {
+func (d *DB) GetCurrentStreak(userID int64, tzOffset int) (int, error) {
+	today := UserLocalDate(tzOffset)
 	var streak int
 	err := d.Pool.QueryRow(context.Background(), `
 		WITH ordered AS (
@@ -68,15 +74,16 @@ func (d *DB) GetCurrentStreak(userID int64) (int, error) {
 			  AND (COALESCE(word_done, false) OR COALESCE(writing_done, false) OR COALESCE(review_done, false))
 		)
 		SELECT COUNT(*) FROM ordered
-		WHERE date = CURRENT_DATE - (rn - 1)::int
-	`, userID).Scan(&streak)
+		WHERE date = $2::DATE - (rn - 1)::int
+	`, userID, today).Scan(&streak)
 	if err != nil {
 		return 0, nil
 	}
 	return streak, nil
 }
 
-func (d *DB) GetWeeklyStats(userID int64) (*WeeklyStats, error) {
+func (d *DB) GetWeeklyStats(userID int64, tzOffset int) (*WeeklyStats, error) {
+	today := UserLocalDate(tzOffset)
 	var s WeeklyStats
 	err := d.Pool.QueryRow(context.Background(), `
 		SELECT
@@ -85,8 +92,8 @@ func (d *DB) GetWeeklyStats(userID int64) (*WeeklyStats, error) {
 			COUNT(*) FILTER (WHERE COALESCE(writing_done, false)),
 			COUNT(*) FILTER (WHERE COALESCE(review_done, false))
 		FROM streaks
-		WHERE user_id = $1 AND date >= CURRENT_DATE - INTERVAL '7 days'
-	`, userID).Scan(&s.Days, &s.WordsDone, &s.WritingsDone, &s.ReviewsDone)
+		WHERE user_id = $1 AND date >= $2::DATE - INTERVAL '7 days'
+	`, userID, today).Scan(&s.Days, &s.WordsDone, &s.WritingsDone, &s.ReviewsDone)
 	if err != nil {
 		return &WeeklyStats{}, nil
 	}

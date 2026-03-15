@@ -3,7 +3,9 @@ package ai
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -21,12 +23,17 @@ func NewOpenAIClient(apiKey string) *OpenAIClient {
 	return &OpenAIClient{client: openai.NewClient(apiKey)}
 }
 
-func (o *OpenAIClient) CheckWriting(text, grammarFocus, level string) (string, error) {
+func (o *OpenAIClient) CheckWriting(text, grammarFocus, level, language string) (string, error) {
 	if o == nil {
 		return "AI feedback is not available right now. Keep writing!", nil
 	}
 
-	prompt := fmt.Sprintf(`You are an English tutor for a Russian-speaking %s student.
+	langName := "English"
+	if language == "de" {
+		langName = "German"
+	}
+
+	prompt := fmt.Sprintf(`You are a %s language tutor for a Russian-speaking %s student.
 Grammar focus this week: %s
 
 Review the following text and respond in this EXACT format:
@@ -39,7 +46,7 @@ Review the following text and respond in this EXACT format:
 Under 150 words. Direct but encouraging.
 
 Student's text:
-%s`, level, grammarFocus, grammarFocus, text)
+%s`, langName, level, grammarFocus, grammarFocus, text)
 
 	return o.complete(prompt)
 }
@@ -49,7 +56,7 @@ func (o *OpenAIClient) CheckSentences(sentences, mediaTitle string) (string, err
 		return "AI feedback is not available right now. Good job writing!", nil
 	}
 
-	prompt := fmt.Sprintf(`You are an English tutor for a Russian-speaking A2 student.
+	prompt := fmt.Sprintf(`You are a language tutor for a Russian-speaking A2 student.
 They watched: "%s"
 They wrote these sentences as a post-watching task.
 
@@ -74,7 +81,7 @@ func (o *OpenAIClient) GenerateQuizOptions(word, definition string, count int) (
 
 	prompt := fmt.Sprintf(`Generate %d wrong answer options for a vocabulary quiz.
 The correct answer is: "%s" (meaning: %s)
-Generate %d WRONG definitions that are plausible but incorrect for A2 English learners.
+Generate %d WRONG definitions that are plausible but incorrect for A2 learners.
 Return ONLY the wrong options, one per line, no numbering.`, count, word, definition, count)
 
 	text, err := o.complete(prompt)
@@ -101,7 +108,7 @@ func (o *OpenAIClient) GenerateWeeklyReport(wordsLearned, writingsDone, streakDa
 		return fmt.Sprintf("Great week! %d words learned, %d writings done, %d day streak!", wordsLearned, writingsDone, streakDays), nil
 	}
 
-	prompt := fmt.Sprintf(`Write a brief, encouraging weekly report for an A2 English learner (Russian-speaking).
+	prompt := fmt.Sprintf(`Write a brief, encouraging weekly report for an A2 language learner (Russian-speaking).
 Stats: %d words learned, %d writings completed, %d day streak, grammar focus: %s.
 2-3 sentences. Encouraging but specific. Include one tip for next week. In English.`, wordsLearned, writingsDone, streakDays, grammarFocus)
 
@@ -113,7 +120,7 @@ func (o *OpenAIClient) SuggestMediaKeywords(grammarFocus, todayWord, level strin
 		return []string{grammarFocus}, nil
 	}
 
-	prompt := fmt.Sprintf(`You help pick YouTube videos for an %s English learner.
+	prompt := fmt.Sprintf(`You help pick YouTube videos for an %s language learner.
 Their grammar focus: %s
 Today's word: %s
 
@@ -138,6 +145,61 @@ Return ONLY the keywords, nothing else.`, level, grammarFocus, todayWord)
 		return []string{grammarFocus}, nil
 	}
 	return keywords, nil
+}
+
+// TextToSpeech generates an MP3 audio file from text using OpenAI TTS.
+// Returns the path to a temporary file that the caller must delete.
+func (o *OpenAIClient) TextToSpeech(text string) (string, error) {
+	if o == nil {
+		return "", fmt.Errorf("OpenAI client not configured")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resp, err := o.client.CreateSpeech(ctx, openai.CreateSpeechRequest{
+		Model: openai.TTSModel1,
+		Voice: openai.VoiceAlloy,
+		Input: text,
+	})
+	if err != nil {
+		return "", fmt.Errorf("TTS error: %w", err)
+	}
+	defer resp.Close()
+
+	tmpFile, err := os.CreateTemp("", "forgepath-tts-*.mp3")
+	if err != nil {
+		return "", fmt.Errorf("temp file error: %w", err)
+	}
+
+	if _, err := io.Copy(tmpFile, resp); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+		return "", fmt.Errorf("write error: %w", err)
+	}
+	tmpFile.Close()
+
+	return tmpFile.Name(), nil
+}
+
+// SpeechToText transcribes a voice message using OpenAI Whisper.
+func (o *OpenAIClient) SpeechToText(filePath string) (string, error) {
+	if o == nil {
+		return "", fmt.Errorf("OpenAI client not configured")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resp, err := o.client.CreateTranscription(ctx, openai.AudioRequest{
+		Model:    openai.Whisper1,
+		FilePath: filePath,
+	})
+	if err != nil {
+		return "", fmt.Errorf("STT error: %w", err)
+	}
+
+	return strings.TrimSpace(resp.Text), nil
 }
 
 func defaultQuizOptions(definition string) []string {

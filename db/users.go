@@ -11,6 +11,7 @@ type User struct {
 	FirstName          string
 	TzOffset           int
 	Level              string
+	Language           string
 	Active             bool
 	SkipCount          int
 	CurrentGrammarWeek int
@@ -20,7 +21,7 @@ type User struct {
 func (d *DB) CreateUser(id int64, username, firstName string) error {
 	_, err := d.Pool.Exec(context.Background(),
 		`INSERT INTO users (id, username, first_name) VALUES ($1, $2, $3)
-		 ON CONFLICT (id) DO UPDATE SET first_name = $3`,
+		 ON CONFLICT (id) DO UPDATE SET username = $2, first_name = $3`,
 		id, username, firstName,
 	)
 	return err
@@ -29,10 +30,12 @@ func (d *DB) CreateUser(id int64, username, firstName string) error {
 func (d *DB) GetUser(id int64) (*User, error) {
 	var u User
 	err := d.Pool.QueryRow(context.Background(),
-		`SELECT id, username, COALESCE(first_name, ''), tz_offset, level, active,
+		`SELECT id, username, COALESCE(first_name, ''), tz_offset, level,
+		        COALESCE(language, 'en'), active,
 		        COALESCE(skip_count, 0), COALESCE(current_grammar_week, 1), created_at
 		 FROM users WHERE id = $1`, id,
-	).Scan(&u.ID, &u.Username, &u.FirstName, &u.TzOffset, &u.Level, &u.Active,
+	).Scan(&u.ID, &u.Username, &u.FirstName, &u.TzOffset, &u.Level,
+		&u.Language, &u.Active,
 		&u.SkipCount, &u.CurrentGrammarWeek, &u.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -42,7 +45,8 @@ func (d *DB) GetUser(id int64) (*User, error) {
 
 func (d *DB) GetActiveUsers() ([]User, error) {
 	rows, err := d.Pool.Query(context.Background(),
-		`SELECT id, username, COALESCE(first_name, ''), tz_offset, level, active,
+		`SELECT id, username, COALESCE(first_name, ''), tz_offset, level,
+		        COALESCE(language, 'en'), active,
 		        COALESCE(skip_count, 0), COALESCE(current_grammar_week, 1), created_at
 		 FROM users WHERE active = true`,
 	)
@@ -54,7 +58,8 @@ func (d *DB) GetActiveUsers() ([]User, error) {
 	var users []User
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.FirstName, &u.TzOffset, &u.Level, &u.Active,
+		if err := rows.Scan(&u.ID, &u.Username, &u.FirstName, &u.TzOffset, &u.Level,
+			&u.Language, &u.Active,
 			&u.SkipCount, &u.CurrentGrammarWeek, &u.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -75,15 +80,21 @@ func (d *DB) UpdateUserLevel(userID int64, level string) error {
 	return err
 }
 
+func (d *DB) UpdateUserLanguage(userID int64, language string) error {
+	_, err := d.Pool.Exec(context.Background(),
+		`UPDATE users SET language = $2 WHERE id = $1`, userID, language)
+	return err
+}
+
 func (d *DB) IncrementSkipCount(userID int64) error {
 	_, err := d.Pool.Exec(context.Background(),
 		`UPDATE users SET skip_count = skip_count + 1 WHERE id = $1`, userID)
 	return err
 }
 
-func (d *DB) ResetWeeklySkips() error {
+func (d *DB) ResetWeeklySkips(userID int64) error {
 	_, err := d.Pool.Exec(context.Background(),
-		`UPDATE users SET skip_count = 0 WHERE active = true`)
+		`UPDATE users SET skip_count = 0 WHERE id = $1`, userID)
 	return err
 }
 

@@ -6,11 +6,13 @@ import (
 	tele "gopkg.in/telebot.v3"
 )
 
-func MainMenu() *tele.ReplyMarkup {
-	menu := &tele.ReplyMarkup{ResizeKeyboard: true}
-	menu.Reply(
-		menu.Row(menu.Text("📖 Today"), menu.Text("📊 Stats")),
-		menu.Row(menu.Text("⚙️ Settings")),
+func LanguageSelectKeyboard() *tele.ReplyMarkup {
+	menu := &tele.ReplyMarkup{}
+	menu.Inline(
+		menu.Row(
+			menu.Data("\U0001F1EC\U0001F1E7 English", "lang", "en"),
+			menu.Data("\U0001F1E9\U0001F1EA Deutsch", "lang", "de"),
+		),
 	)
 	return menu
 }
@@ -35,13 +37,13 @@ func TimezoneKeyboard() *tele.ReplyMarkup {
 	menu := &tele.ReplyMarkup{}
 	menu.Inline(
 		menu.Row(
-			menu.Data("UTC+2 🇪🇺", "tz", "2"),
-			menu.Data("UTC+3 🇷🇺", "tz", "3"),
+			menu.Data("UTC+2 \U0001F1EA\U0001F1FA", "tz", "2"),
+			menu.Data("UTC+3 \U0001F1F7\U0001F1FA", "tz", "3"),
 			menu.Data("UTC+4", "tz", "4"),
 		),
 		menu.Row(
-			menu.Data("UTC+5 🇰🇿", "tz", "5"),
-			menu.Data("UTC+6 🇰🇿", "tz", "6"),
+			menu.Data("UTC+5 \U0001F1F0\U0001F1FF", "tz", "5"),
+			menu.Data("UTC+6 \U0001F1F0\U0001F1FF", "tz", "6"),
 			menu.Data("UTC+7", "tz", "7"),
 		),
 		menu.Row(
@@ -80,8 +82,11 @@ func SettingsKeyboard() *tele.ReplyMarkup {
 	menu := &tele.ReplyMarkup{}
 	menu.Inline(
 		menu.Row(
-			menu.Data("🕐 Timezone", "settings", "timezone"),
-			menu.Data("📚 Level", "settings", "level"),
+			menu.Data("\U0001F550 Timezone", "settings", "timezone"),
+			menu.Data("\U0001F4DA Level", "settings", "level"),
+		),
+		menu.Row(
+			menu.Data("\U0001F310 Language", "settings", "language"),
 		),
 	)
 	return menu
@@ -91,8 +96,18 @@ func SkipConfirmKeyboard() *tele.ReplyMarkup {
 	menu := &tele.ReplyMarkup{}
 	menu.Inline(
 		menu.Row(
-			menu.Data("✅ Yes, skip", "skip", "confirm"),
-			menu.Data("❌ Cancel", "skip", "cancel"),
+			menu.Data("\u2705 Yes, skip", "skip", "confirm"),
+			menu.Data("\u274C Cancel", "skip", "cancel"),
+		),
+	)
+	return menu
+}
+
+func ListenKeyboard(wordID int) *tele.ReplyMarkup {
+	menu := &tele.ReplyMarkup{}
+	menu.Inline(
+		menu.Row(
+			menu.Data("\U0001F50A Listen", "listen", fmt.Sprintf("%d", wordID)),
 		),
 	)
 	return menu
@@ -102,7 +117,7 @@ func MediaDoneKeyboard(mediaID int) *tele.ReplyMarkup {
 	menu := &tele.ReplyMarkup{}
 	menu.Inline(
 		menu.Row(
-			menu.Data("✅ I watched it!", "media", fmt.Sprintf("done|%d", mediaID)),
+			menu.Data("\u2705 I watched it!", "media", fmt.Sprintf("done|%d", mediaID)),
 		),
 	)
 	return menu

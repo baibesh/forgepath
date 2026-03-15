@@ -21,7 +21,7 @@ func main() {
 	database := db.Connect(cfg.DatabaseURL)
 	defer database.Close()
 
-	database.Migrate()
+	database.Migrate(cfg.DatabaseURL)
 
 	b, err := tele.NewBot(tele.Settings{
 		Token:  cfg.BotToken,
@@ -32,6 +32,7 @@ func main() {
 	}
 
 	bot.RegisterHandlers(b, database, cfg)
+	bot.SetBotCommands(b)
 	cronScheduler := cron.StartScheduler(b, database, cfg)
 
 	// Graceful shutdown

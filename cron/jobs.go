@@ -11,6 +11,8 @@ import (
 	tele "gopkg.in/telebot.v3"
 
 	"github.com/baibesh/forgepath/ai"
+	"github.com/baibesh/forgepath/bot"
+	"github.com/baibesh/forgepath/content"
 	"github.com/baibesh/forgepath/db"
 )
 
@@ -45,34 +47,33 @@ func (j *Jobs) DispatchTasks() {
 
 		switch {
 		case localHour == 7 && localMinute < 30:
-			j.safeSend(user.ID, j.sendWordOfDay)
+			j.safeSend(user, j.sendWordOfDay)
 		case localHour == 12 && localMinute < 30:
-			j.safeSend(user.ID, j.sendWritingPrompt)
+			j.safeSend(user, j.sendWritingPrompt)
 		case localHour == 18 && localMinute < 30:
-			j.safeSend(user.ID, j.sendMediaRecommendation)
+			j.safeSend(user, j.sendMediaRecommendation)
 		case localHour == 20 && localMinute < 30:
-			j.safeSend(user.ID, j.sendMediaTask)
+			j.safeSend(user, j.sendMediaTask)
 		case localHour == 21 && localMinute >= 30 && localMinute < 60:
-			j.safeSend(user.ID, j.sendDailyReview)
+			j.safeSend(user, j.sendDailyReview)
 		}
 
 		if now.Weekday() == time.Sunday && localHour == 9 && localMinute < 30 {
-			j.safeSend(user.ID, j.sendWeeklyReport)
+			j.safeSend(user, j.sendWeeklyReport)
 		}
 	}
 }
 
-func (j *Jobs) safeSend(userID int64, fn func(int64)) {
+func (j *Jobs) safeSend(user db.User, fn func(db.User)) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("[cron][user=%d] panic: %v", userID, r)
+			log.Printf("[cron][user=%d] panic: %v", user.ID, r)
 		}
 	}()
-	fn(userID)
+	fn(user)
 }
 
 func (j *Jobs) checkStateTimeout(userID int64) {
-	// Check updated_at in DB — clear if >2 hours stale
 	var updatedAt time.Time
 	err := j.db.Pool.QueryRow(context.Background(),
 		`SELECT updated_at FROM user_state WHERE user_id = $1 AND state != 'idle'`, userID,
@@ -86,115 +87,102 @@ func (j *Jobs) checkStateTimeout(userID int64) {
 	}
 }
 
-func (j *Jobs) sendWordOfDay(userID int64) {
-	streak, _ := j.db.GetTodayStreak(userID)
+func (j *Jobs) sendWordOfDay(user db.User) {
+	streak, _ := j.db.GetTodayStreak(user.ID, user.TzOffset)
 	if streak.WordDone {
 		return
 	}
 
-	user, err := j.db.GetUser(userID)
+	word, err := j.db.GetRandomUnseen(user.ID, user.Level, user.Language)
 	if err != nil {
+		log.Printf("[cron][user=%d] no unseen words: %v", user.ID, err)
 		return
 	}
 
-	word, err := j.db.GetRandomUnseen(userID, user.Level)
-	if err != nil {
-		log.Printf("[cron][user=%d] no unseen words: %v", userID, err)
-		return
-	}
+	grammar, _ := j.db.GetCurrentGrammarFocus(user.ID)
+	j.db.MarkWordSeen(user.ID, word.ID)
+	j.db.MarkWordDone(user.ID, user.TzOffset)
 
-	grammar, _ := j.db.GetCurrentGrammarFocus(userID)
-	j.db.MarkWordSeen(userID, word.ID)
-	j.db.MarkWordDone(userID)
+	log.Printf("[cron][user=%d] word of day: %s", user.ID, word.Word)
+	j.sendMessage(user.ID, formatWordOfDayCron(word, grammar))
 
-	log.Printf("[cron][user=%d] word of day: %s", userID, word.Word)
-	j.sendMessage(userID, formatWordOfDayCron(word, grammar))
-
-	reviewWords, _ := j.db.GetWordsForReview(userID, 2)
+	// Send review quiz with interactive buttons
+	reviewWords, _ := j.db.GetWordsForReview(user.ID, 2)
 	for _, rw := range reviewWords {
-		j.sendSimpleQuiz(userID, &rw)
+		j.sendQuizWithButtons(user.ID, &rw)
 	}
 }
 
-func (j *Jobs) sendWritingPrompt(userID int64) {
-	streak, _ := j.db.GetTodayStreak(userID)
+func (j *Jobs) sendWritingPrompt(user db.User) {
+	streak, _ := j.db.GetTodayStreak(user.ID, user.TzOffset)
 	if streak.WritingDone {
 		return
 	}
 
-	grammar, _ := j.db.GetCurrentGrammarFocus(userID)
+	grammar, _ := j.db.GetCurrentGrammarFocus(user.ID)
 	if grammar == nil {
-		grammar = &db.GrammarWeek{TenseName: "Past Simple", Anchor: "🚪 Закрытая дверь", Formula: "S + V2", Markers: "yesterday, last week"}
+		grammar = db.DefaultGrammar(user.Language)
 	}
 
-	topics := []string{
-		"What did you do last weekend?",
-		"Describe your morning routine.",
-		"Tell about your favorite movie.",
-		"What would you like to learn?",
-		"Describe a person you admire.",
-		"What did you eat yesterday?",
-		"Tell about your best trip.",
-		"What makes you happy?",
-		"Describe your workplace.",
-		"What are your plans for this week?",
-	}
-	topic := topics[rand.Intn(len(topics))]
+	topic := content.RandomTopic(user.Language)
 
-	j.db.SetState(userID, "waiting_writing", map[string]string{
+	j.db.SetState(user.ID, "waiting_writing", map[string]string{
 		"topic":         topic,
 		"grammar_focus": grammar.TenseName,
 	})
 
-	log.Printf("[cron][user=%d] writing prompt: %s", userID, topic)
-	j.sendMessage(userID, fmt.Sprintf("✍️ *Free Writing — 5 min*\n\n"+
-		"🎯 Grammar: %s\n🚪 %s\n\n*Topic:* \"%s\"\n\n📍 Formula: %s\n📍 Markers: %s\n\nSend your text when ready!",
-		grammar.TenseName, grammar.Anchor, topic, grammar.Formula, grammar.Markers))
+	log.Printf("[cron][user=%d] writing prompt: %s", user.ID, topic)
+	j.sendMessage(user.ID, fmt.Sprintf("\u270D\uFE0F *Free Writing — 5 min*\n\n"+
+		"\U0001F3AF Grammar: %s\n\U0001F6AA %s\n\n*Topic:* \"%s\"\n\n\U0001F4CD Formula: %s\n\U0001F4CD Markers: %s\n\n%s",
+		grammar.TenseName, grammar.Anchor, topic, grammar.Formula, grammar.Markers,
+		content.WritingHint(user.Language)))
 }
 
-func (j *Jobs) sendMediaRecommendation(userID int64) {
-	_, err := j.db.GetTodayUnsentMedia(userID)
+func (j *Jobs) sendMediaRecommendation(user db.User) {
+	_, err := j.db.GetTodayUnsentMedia(user.ID, user.TzOffset)
 	if err == nil {
 		return
 	}
 
-	user, err := j.db.GetUser(userID)
-	if err != nil {
-		return
-	}
-
-	// Smart media selection via AI keywords
-	grammar, _ := j.db.GetCurrentGrammarFocus(userID)
+	grammar, _ := j.db.GetCurrentGrammarFocus(user.ID)
 	grammarFocus := "english"
 	todayWord := ""
 	if grammar != nil {
 		grammarFocus = grammar.TenseName
 	}
 
-	words, _ := j.db.GetUserWords(userID, 0, 1)
+	words, _ := j.db.GetUserWords(user.ID, 0, 1)
 	if len(words) > 0 {
 		todayWord = words[0].Word
 	}
 
 	keywords, _ := j.openai.SuggestMediaKeywords(grammarFocus, todayWord, user.Level)
-	log.Printf("[cron][user=%d] media keywords: %v", userID, keywords)
+	log.Printf("[cron][user=%d] media keywords: %v", user.ID, keywords)
 
-	media, err := j.db.SearchMedia(userID, user.Level, keywords)
+	media, err := j.db.SearchMedia(user.ID, user.Level, user.Language, keywords)
 	if err != nil {
-		log.Printf("[cron][user=%d] no media: %v", userID, err)
+		log.Printf("[cron][user=%d] no media: %v", user.ID, err)
 		return
 	}
 
-	j.db.MarkMediaSent(userID, media.ID)
+	j.db.MarkMediaSent(user.ID, media.ID)
 
-	log.Printf("[cron][user=%d] media: %s", userID, media.Title)
-	j.sendMessage(userID, fmt.Sprintf("🎬 *Today's Recommendation*\n\n"+
-		"📺 \"%s\"\n🔗 %s\n⏱ %s | Level: %s\n\nWatch it! Task in 2 hours 📝",
-		media.Title, media.URL, media.Duration, media.Level))
+	log.Printf("[cron][user=%d] media: %s", user.ID, media.Title)
+
+	// Send with interactive button
+	recipient := &tele.User{ID: user.ID}
+	_, sendErr := j.bot.Send(recipient,
+		fmt.Sprintf("\U0001F3AC *Today's Recommendation*\n\n"+
+			"\U0001F4FA \"%s\"\n\U0001F517 %s\n\u23F1 %s | Level: %s\n\nWatch it! Then press the button below \U0001F4DD",
+			media.Title, media.URL, media.Duration, media.Level),
+		&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: bot.MediaDoneKeyboard(media.ID)})
+	if sendErr != nil {
+		log.Printf("[cron][user=%d] send media error: %v", user.ID, sendErr)
+	}
 }
 
-func (j *Jobs) sendMediaTask(userID int64) {
-	um, err := j.db.GetTodayUnsentMedia(userID)
+func (j *Jobs) sendMediaTask(user db.User) {
+	um, err := j.db.GetTodayUnsentMedia(user.ID, user.TzOffset)
 	if err != nil || um == nil {
 		return
 	}
@@ -202,63 +190,62 @@ func (j *Jobs) sendMediaTask(userID int64) {
 		return
 	}
 
-	j.db.MarkMediaTaskSent(userID, um.MediaID)
+	j.db.MarkMediaTaskSent(user.ID, um.MediaID)
 
-	grammar, _ := j.db.GetCurrentGrammarFocus(userID)
+	grammar, _ := j.db.GetCurrentGrammarFocus(user.ID)
 	grammarFocus := "Past Simple"
 	if grammar != nil {
 		grammarFocus = grammar.TenseName
 	}
 
-	// Get the media title from the media we sent today
 	var mediaTitle string
 	err = j.db.Pool.QueryRow(context.Background(),
 		`SELECT mr.title FROM user_media um JOIN media_resources mr ON mr.id = um.media_id
-		 WHERE um.user_id = $1 AND um.media_id = $2`, userID, um.MediaID).Scan(&mediaTitle)
+		 WHERE um.user_id = $1 AND um.media_id = $2`, user.ID, um.MediaID).Scan(&mediaTitle)
 	if err != nil {
 		mediaTitle = "the video"
 	}
 
-	j.db.SetState(userID, "waiting_media_task", map[string]string{
+	j.db.SetState(user.ID, "waiting_media_task", map[string]string{
 		"media_id":    fmt.Sprintf("%d", um.MediaID),
 		"media_title": mediaTitle,
 	})
 
-	log.Printf("[cron][user=%d] media task for: %s", userID, mediaTitle)
-	j.sendMessage(userID, fmt.Sprintf("📝 *Post-Media Task*\n\n"+
+	log.Printf("[cron][user=%d] media task for: %s", user.ID, mediaTitle)
+	j.sendMessage(user.ID, fmt.Sprintf("\U0001F4DD *Post-Media Task*\n\n"+
 		"Write 3 sentences about what you watched:\nUse %s\n\n"+
 		"1. What happened in the video?\n2. One new word or phrase you noticed\n"+
 		"3. \"I think...\" (your opinion)\n\n_(type your sentences)_", grammarFocus))
 }
 
-func (j *Jobs) sendDailyReview(userID int64) {
-	streak, _ := j.db.GetTodayStreak(userID)
+func (j *Jobs) sendDailyReview(user db.User) {
+	streak, _ := j.db.GetTodayStreak(user.ID, user.TzOffset)
 	if streak.ReviewDone {
 		return
 	}
 
-	streakDays, _ := j.db.GetCurrentStreak(userID)
-	todayStreak, _ := j.db.GetTodayStreak(userID)
+	streakDays, _ := j.db.GetCurrentStreak(user.ID, user.TzOffset)
+	todayStreak, _ := j.db.GetTodayStreak(user.ID, user.TzOffset)
 
 	check := func(done bool) string {
 		if done {
-			return "✅"
+			return "\u2705"
 		}
-		return "❌"
+		return "\u274C"
 	}
 
-	log.Printf("[cron][user=%d] daily review (streak=%d)", userID, streakDays)
-	j.sendMessage(userID, fmt.Sprintf("📊 *Daily Review*\n\n"+
-		"%s Word of the Day\n%s Free Writing\n%s Daily Review\n\n🔥 Streak: *%d days*\n\nKeep going! See you tomorrow 💪",
+	log.Printf("[cron][user=%d] daily review (streak=%d)", user.ID, streakDays)
+	j.sendMessage(user.ID, fmt.Sprintf("\U0001F4CA *Daily Review*\n\n"+
+		"%s Word of the Day\n%s Free Writing\n%s Daily Review\n\n\U0001F525 Streak: *%d days*\n\nKeep going! See you tomorrow \U0001F4AA",
 		check(todayStreak.WordDone), check(todayStreak.WritingDone), check(todayStreak.ReviewDone), streakDays))
 
-	j.db.MarkReviewDone(userID)
+	j.db.MarkReviewDone(user.ID, user.TzOffset)
 }
 
-func (j *Jobs) sendWeeklyReport(userID int64) {
-	weekly, _ := j.db.GetWeeklyStats(userID)
-	streakDays, _ := j.db.GetCurrentStreak(userID)
-	grammar, _ := j.db.GetCurrentGrammarFocus(userID)
+func (j *Jobs) sendWeeklyReport(user db.User) {
+	weekly, _ := j.db.GetWeeklyStats(user.ID, user.TzOffset)
+	streakDays, _ := j.db.GetCurrentStreak(user.ID, user.TzOffset)
+	grammar, _ := j.db.GetCurrentGrammarFocus(user.ID)
 
 	grammarFocus := "grammar"
 	if grammar != nil {
@@ -270,13 +257,13 @@ func (j *Jobs) sendWeeklyReport(userID int64) {
 		report = fmt.Sprintf("Great week! %d words, %d writings, %d day streak!", weekly.WordsDone, weekly.WritingsDone, streakDays)
 	}
 
-	log.Printf("[cron][user=%d] weekly report", userID)
-	j.sendMessage(userID, fmt.Sprintf("📊 *Weekly Report*\n\n"+
-		"📖 Words: %d\n✍️ Writings: %d\n📝 Reviews: %d\n🔥 Streak: %d days\n\n%s\n\nNew grammar week starts now! 📚",
+	log.Printf("[cron][user=%d] weekly report", user.ID)
+	j.sendMessage(user.ID, fmt.Sprintf("\U0001F4CA *Weekly Report*\n\n"+
+		"\U0001F4D6 Words: %d\n\u270D\uFE0F Writings: %d\n\U0001F4DD Reviews: %d\n\U0001F525 Streak: %d days\n\n%s\n\nNew grammar week starts now! \U0001F4DA",
 		weekly.WordsDone, weekly.WritingsDone, weekly.ReviewsDone, streakDays, report))
 
-	j.db.AdvanceGrammarWeek(userID)
-	j.db.ResetWeeklySkips()
+	j.db.AdvanceGrammarWeek(user.ID)
+	j.db.ResetWeeklySkips(user.ID)
 }
 
 func (j *Jobs) sendMessage(userID int64, text string) {
@@ -287,7 +274,7 @@ func (j *Jobs) sendMessage(userID int64, text string) {
 	}
 }
 
-func (j *Jobs) sendSimpleQuiz(userID int64, word *db.Word) {
+func (j *Jobs) sendQuizWithButtons(userID int64, word *db.Word) {
 	wrongOptions, _ := j.openai.GenerateQuizOptions(word.Word, word.Definition, 3)
 	options := []string{word.Definition}
 	options = append(options, wrongOptions...)
@@ -296,8 +283,16 @@ func (j *Jobs) sendSimpleQuiz(userID int64, word *db.Word) {
 		options[i], options[k] = options[k], options[i]
 	})
 
+	var correctIdx int
+	for i, opt := range options {
+		if opt == word.Definition {
+			correctIdx = i
+			break
+		}
+	}
+
 	var sb strings.Builder
-	sb.WriteString("🧠 *Quick Review*\n\n")
+	sb.WriteString("\U0001F9E0 *Quick Review*\n\n")
 	sb.WriteString(fmt.Sprintf("What does *%s* mean?\n\n", word.Word))
 	letters := []string{"A", "B", "C", "D"}
 	for i, opt := range options {
@@ -306,26 +301,34 @@ func (j *Jobs) sendSimpleQuiz(userID int64, word *db.Word) {
 		}
 	}
 
-	j.sendMessage(userID, sb.String())
+	recipient := &tele.User{ID: userID}
+	_, err := j.bot.Send(recipient, sb.String(),
+		&tele.SendOptions{
+			ParseMode:   tele.ModeMarkdown,
+			ReplyMarkup: bot.QuizKeyboard(word.ID, options, correctIdx),
+		})
+	if err != nil {
+		log.Printf("[cron][user=%d] send quiz error: %v", userID, err)
+	}
 }
 
 func formatWordOfDayCron(word *db.Word, grammar *db.GrammarWeek) string {
 	var sb strings.Builder
-	sb.WriteString("📖 *Word of the Day*\n\n")
+	sb.WriteString("\U0001F4D6 *Word of the Day*\n\n")
 	sb.WriteString(fmt.Sprintf("*%s* — %s\n\n", word.Word, word.Definition))
-	sb.WriteString(fmt.Sprintf("💡 \"%s\"\n\n", word.Example))
+	sb.WriteString(fmt.Sprintf("\U0001F4A1 \"%s\"\n\n", word.Example))
 
 	if word.Construction != "" {
-		sb.WriteString(fmt.Sprintf("📌 Construction: %s\n", word.Construction))
+		sb.WriteString(fmt.Sprintf("\U0001F4CC Construction: %s\n", word.Construction))
 	}
 	if word.Collocations != "" {
-		sb.WriteString(fmt.Sprintf("🔗 Collocations: %s\n\n", word.Collocations))
+		sb.WriteString(fmt.Sprintf("\U0001F517 Collocations: %s\n\n", word.Collocations))
 	}
 
 	if grammar != nil {
-		sb.WriteString(fmt.Sprintf("🎯 Grammar: %s — %s\n", grammar.Family, grammar.TenseName))
-		sb.WriteString(fmt.Sprintf("🚪 Anchor: %s\n", grammar.Anchor))
-		sb.WriteString(fmt.Sprintf("📍 Markers: %s\n", grammar.Markers))
+		sb.WriteString(fmt.Sprintf("\U0001F3AF Grammar: %s — %s\n", grammar.Family, grammar.TenseName))
+		sb.WriteString(fmt.Sprintf("\U0001F6AA Anchor: %s\n", grammar.Anchor))
+		sb.WriteString(fmt.Sprintf("\U0001F4CD Markers: %s\n", grammar.Markers))
 	}
 
 	return sb.String()

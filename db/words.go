@@ -13,6 +13,7 @@ type Word struct {
 	Collocations string
 	Construction string
 	Level        string
+	Language     string
 }
 
 type UserWord struct {
@@ -30,25 +31,26 @@ func (d *DB) GetWordByID(id int) (*Word, error) {
 	var w Word
 	err := d.Pool.QueryRow(context.Background(),
 		`SELECT id, word, COALESCE(definition,''), COALESCE(example,''), COALESCE(collocations,''),
-		        COALESCE(construction,''), COALESCE(level,'A2')
+		        COALESCE(construction,''), COALESCE(level,'A2'), COALESCE(language,'en')
 		 FROM words WHERE id = $1`, id,
-	).Scan(&w.ID, &w.Word, &w.Definition, &w.Example, &w.Collocations, &w.Construction, &w.Level)
+	).Scan(&w.ID, &w.Word, &w.Definition, &w.Example, &w.Collocations, &w.Construction, &w.Level, &w.Language)
 	if err != nil {
 		return nil, err
 	}
 	return &w, nil
 }
 
-func (d *DB) GetRandomUnseen(userID int64, level string) (*Word, error) {
+func (d *DB) GetRandomUnseen(userID int64, level, language string) (*Word, error) {
 	var w Word
 	err := d.Pool.QueryRow(context.Background(),
 		`SELECT w.id, w.word, COALESCE(w.definition,''), COALESCE(w.example,''),
-		        COALESCE(w.collocations,''), COALESCE(w.construction,''), COALESCE(w.level,'A2')
+		        COALESCE(w.collocations,''), COALESCE(w.construction,''), COALESCE(w.level,'A2'),
+		        COALESCE(w.language,'en')
 		 FROM words w
-		 WHERE w.level = $2
+		 WHERE w.level = $2 AND COALESCE(w.language,'en') = $3
 		   AND w.id NOT IN (SELECT word_id FROM user_words WHERE user_id = $1)
-		 ORDER BY RANDOM() LIMIT 1`, userID, level,
-	).Scan(&w.ID, &w.Word, &w.Definition, &w.Example, &w.Collocations, &w.Construction, &w.Level)
+		 ORDER BY RANDOM() LIMIT 1`, userID, level, language,
+	).Scan(&w.ID, &w.Word, &w.Definition, &w.Example, &w.Collocations, &w.Construction, &w.Level, &w.Language)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +60,8 @@ func (d *DB) GetRandomUnseen(userID int64, level string) (*Word, error) {
 func (d *DB) GetWordsForReview(userID int64, limit int) ([]Word, error) {
 	rows, err := d.Pool.Query(context.Background(),
 		`SELECT w.id, w.word, COALESCE(w.definition,''), COALESCE(w.example,''),
-		        COALESCE(w.collocations,''), COALESCE(w.construction,''), COALESCE(w.level,'A2')
+		        COALESCE(w.collocations,''), COALESCE(w.construction,''), COALESCE(w.level,'A2'),
+		        COALESCE(w.language,'en')
 		 FROM user_words uw
 		 JOIN words w ON w.id = uw.word_id
 		 WHERE uw.user_id = $1 AND uw.next_review <= NOW()
@@ -71,7 +74,7 @@ func (d *DB) GetWordsForReview(userID int64, limit int) ([]Word, error) {
 	var words []Word
 	for rows.Next() {
 		var w Word
-		if err := rows.Scan(&w.ID, &w.Word, &w.Definition, &w.Example, &w.Collocations, &w.Construction, &w.Level); err != nil {
+		if err := rows.Scan(&w.ID, &w.Word, &w.Definition, &w.Example, &w.Collocations, &w.Construction, &w.Level, &w.Language); err != nil {
 			return nil, err
 		}
 		words = append(words, w)
@@ -107,7 +110,8 @@ func (d *DB) GetUserWordCount(userID int64) (int, error) {
 func (d *DB) GetUserWords(userID int64, offset, limit int) ([]Word, error) {
 	rows, err := d.Pool.Query(context.Background(),
 		`SELECT w.id, w.word, COALESCE(w.definition,''), COALESCE(w.example,''),
-		        COALESCE(w.collocations,''), COALESCE(w.construction,''), COALESCE(w.level,'A2')
+		        COALESCE(w.collocations,''), COALESCE(w.construction,''), COALESCE(w.level,'A2'),
+		        COALESCE(w.language,'en')
 		 FROM user_words uw
 		 JOIN words w ON w.id = uw.word_id
 		 WHERE uw.user_id = $1
@@ -121,7 +125,7 @@ func (d *DB) GetUserWords(userID int64, offset, limit int) ([]Word, error) {
 	var words []Word
 	for rows.Next() {
 		var w Word
-		if err := rows.Scan(&w.ID, &w.Word, &w.Definition, &w.Example, &w.Collocations, &w.Construction, &w.Level); err != nil {
+		if err := rows.Scan(&w.ID, &w.Word, &w.Definition, &w.Example, &w.Collocations, &w.Construction, &w.Level, &w.Language); err != nil {
 			return nil, err
 		}
 		words = append(words, w)
@@ -140,10 +144,23 @@ func (d *DB) GetUserWordRepetitions(userID int64, wordID int) (int, error) {
 	return reps, nil
 }
 
+// GetUserWordSRS returns the current SRS values for a user-word pair.
+func (d *DB) GetUserWordSRS(userID int64, wordID int) (repetitions int, intervalDays int, easeFactor float64, err error) {
+	err = d.Pool.QueryRow(context.Background(),
+		`SELECT COALESCE(repetitions, 0), COALESCE(interval_days, 1), COALESCE(ease_factor, 2.5)
+		 FROM user_words WHERE user_id = $1 AND word_id = $2`,
+		userID, wordID).Scan(&repetitions, &intervalDays, &easeFactor)
+	if err != nil {
+		return 0, 1, 2.5, nil
+	}
+	return
+}
+
 func (d *DB) GetRandomWordsExcluding(wordID int, level string, limit int) ([]Word, error) {
 	rows, err := d.Pool.Query(context.Background(),
 		`SELECT id, word, COALESCE(definition,''), COALESCE(example,''),
-		        COALESCE(collocations,''), COALESCE(construction,''), COALESCE(level,'A2')
+		        COALESCE(collocations,''), COALESCE(construction,''), COALESCE(level,'A2'),
+		        COALESCE(language,'en')
 		 FROM words WHERE id != $1 AND level = $2
 		 ORDER BY RANDOM() LIMIT $3`, wordID, level, limit)
 	if err != nil {
@@ -154,7 +171,7 @@ func (d *DB) GetRandomWordsExcluding(wordID int, level string, limit int) ([]Wor
 	var words []Word
 	for rows.Next() {
 		var w Word
-		if err := rows.Scan(&w.ID, &w.Word, &w.Definition, &w.Example, &w.Collocations, &w.Construction, &w.Level); err != nil {
+		if err := rows.Scan(&w.ID, &w.Word, &w.Definition, &w.Example, &w.Collocations, &w.Construction, &w.Level, &w.Language); err != nil {
 			return nil, err
 		}
 		words = append(words, w)
