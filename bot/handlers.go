@@ -46,10 +46,14 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 			return c.Send("Something went wrong. Try again later.")
 		}
 
+		// Remove old reply keyboard if it was set
+		removeKB := &tele.ReplyMarkup{RemoveKeyboard: true}
+		c.Send("\u200B", &tele.SendOptions{ReplyMarkup: removeKB})
+
 		existing, err := database.GetUser(user.ID)
 		if err == nil && existing.Language != "" && existing.Level != "" && existing.TzOffset != 0 {
 			return c.Send(fmt.Sprintf(
-				"Welcome back, %s! %s\n\n%s %s | Level: *%s*\nTimezone: UTC+%d\n\nUse the menu below to continue learning!",
+				"Welcome back, %s! %s\n\n%s %s | Level: *%s*\nTimezone: UTC+%d\n\nUse /help to see commands.",
 				user.FirstName, content.LanguageFlag(existing.Language),
 				content.LanguageFlag(existing.Language), content.LanguageName(existing.Language),
 				existing.Level, existing.TzOffset,
