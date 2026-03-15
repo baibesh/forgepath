@@ -51,7 +51,6 @@ func (d *DB) GetUnseenMedia(userID int64, level, language string) (*MediaResourc
 	return &m, nil
 }
 
-// SearchMedia finds media matching tags/topic keywords, prioritizing popular unseen content.
 func (d *DB) SearchMedia(userID int64, level, language string, keywords []string) (*MediaResource, error) {
 	query := `SELECT mr.id, mr.title, mr.url, mr.media_type, mr.level,
 		        COALESCE(mr.topic,''), COALESCE(mr.duration,''), mr.active,
@@ -79,7 +78,6 @@ func (d *DB) SearchMedia(userID int64, level, language string, keywords []string
 		&m.ID, &m.Title, &m.URL, &m.MediaType, &m.Level, &m.Topic, &m.Duration, &m.Active,
 		&m.Tags, &m.ViewCount, &m.HasSubtitles, &m.Description, &m.Language)
 	if err != nil {
-		// Fallback to any unseen media
 		return d.GetUnseenMedia(userID, level, language)
 	}
 	return &m, nil

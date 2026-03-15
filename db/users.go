@@ -13,6 +13,7 @@ type User struct {
 	Level              string
 	Language           string
 	Active             bool
+	Onboarded          bool
 	SkipCount          int
 	CurrentGrammarWeek int
 	CreatedAt          time.Time
@@ -31,11 +32,11 @@ func (d *DB) GetUser(id int64) (*User, error) {
 	var u User
 	err := d.Pool.QueryRow(context.Background(),
 		`SELECT id, username, COALESCE(first_name, ''), tz_offset, level,
-		        COALESCE(language, 'en'), active,
+		        COALESCE(language, 'en'), active, COALESCE(onboarded, false),
 		        COALESCE(skip_count, 0), COALESCE(current_grammar_week, 1), created_at
 		 FROM users WHERE id = $1`, id,
 	).Scan(&u.ID, &u.Username, &u.FirstName, &u.TzOffset, &u.Level,
-		&u.Language, &u.Active,
+		&u.Language, &u.Active, &u.Onboarded,
 		&u.SkipCount, &u.CurrentGrammarWeek, &u.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -46,7 +47,7 @@ func (d *DB) GetUser(id int64) (*User, error) {
 func (d *DB) GetActiveUsers() ([]User, error) {
 	rows, err := d.Pool.Query(context.Background(),
 		`SELECT id, username, COALESCE(first_name, ''), tz_offset, level,
-		        COALESCE(language, 'en'), active,
+		        COALESCE(language, 'en'), active, COALESCE(onboarded, false),
 		        COALESCE(skip_count, 0), COALESCE(current_grammar_week, 1), created_at
 		 FROM users WHERE active = true`,
 	)
@@ -59,7 +60,7 @@ func (d *DB) GetActiveUsers() ([]User, error) {
 	for rows.Next() {
 		var u User
 		if err := rows.Scan(&u.ID, &u.Username, &u.FirstName, &u.TzOffset, &u.Level,
-			&u.Language, &u.Active,
+			&u.Language, &u.Active, &u.Onboarded,
 			&u.SkipCount, &u.CurrentGrammarWeek, &u.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -95,6 +96,12 @@ func (d *DB) IncrementSkipCount(userID int64) error {
 func (d *DB) ResetWeeklySkips(userID int64) error {
 	_, err := d.Pool.Exec(context.Background(),
 		`UPDATE users SET skip_count = 0 WHERE id = $1`, userID)
+	return err
+}
+
+func (d *DB) SetOnboarded(userID int64) error {
+	_, err := d.Pool.Exec(context.Background(),
+		`UPDATE users SET onboarded = TRUE WHERE id = $1`, userID)
 	return err
 }
 

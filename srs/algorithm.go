@@ -8,8 +8,6 @@ type ReviewResult struct {
 	Repetitions  int
 }
 
-// Calculate implements SM-2 spaced repetition algorithm.
-// score: 0-5, where 0 = complete fail, 5 = perfect recall
 func Calculate(repetitions int, intervalDays int, easeFactor float64, score int) ReviewResult {
 	if score < 3 {
 		return ReviewResult{

@@ -42,7 +42,6 @@ func (d *DB) GetCurrentGrammarFocus(userID int64) (*GrammarWeek, error) {
 	return &g, nil
 }
 
-// DefaultGrammar returns a fallback grammar week when none is found in DB.
 func DefaultGrammar(language string) *GrammarWeek {
 	switch language {
 	case "de":

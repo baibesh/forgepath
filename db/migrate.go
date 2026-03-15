@@ -13,9 +13,7 @@ import (
 //go:embed migrations/*.sql
 var embedMigrations embed.FS
 
-// Migrate runs versioned SQL migrations via goose, then seeds initial data.
 func (d *DB) Migrate(databaseURL string) {
-	// goose needs *sql.DB — open a separate connection for migrations only
 	sqlDB, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		log.Fatalf("Migration: cannot open DB: %v", err)
@@ -34,7 +32,6 @@ func (d *DB) Migrate(databaseURL string) {
 
 	log.Println("Goose migrations applied")
 
-	// Seed initial data (idempotent — ON CONFLICT DO NOTHING)
 	ctx := context.Background()
 	d.seedGrammarWeeksEN(ctx)
 	d.seedGrammarWeeksDE(ctx)
@@ -45,8 +42,6 @@ func (d *DB) Migrate(databaseURL string) {
 
 	log.Println("Database migration and seeding completed")
 }
-
-// ==================== ENGLISH ====================
 
 func (d *DB) seedGrammarWeeksEN(ctx context.Context) {
 	weeks := []struct {
@@ -428,10 +423,4 @@ func (d *DB) seedMediaEN(ctx context.Context) {
 	}
 }
 
-// seedMediaDE is a no-op — German media is populated by running:
-//
-//	go run cmd/seed-media/main.go
-//
-// The seed-media script uses YouTube Data API to find real videos
-// with >50K views, subtitles, and proper duration filtering.
 func (d *DB) seedMediaDE(ctx context.Context) {}

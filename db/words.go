@@ -144,7 +144,6 @@ func (d *DB) GetUserWordRepetitions(userID int64, wordID int) (int, error) {
 	return reps, nil
 }
 
-// GetUserWordSRS returns the current SRS values for a user-word pair.
 func (d *DB) GetUserWordSRS(userID int64, wordID int) (repetitions int, intervalDays int, easeFactor float64, err error) {
 	err = d.Pool.QueryRow(context.Background(),
 		`SELECT COALESCE(repetitions, 0), COALESCE(interval_days, 1), COALESCE(ease_factor, 2.5)

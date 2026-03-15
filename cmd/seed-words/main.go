@@ -249,7 +249,6 @@ func main() {
 			log.Printf("  ✅ %s — %s", w.Word, w.Definition)
 		}
 
-		// Rate limit
 		time.Sleep(1 * time.Second)
 	}
 
@@ -266,7 +265,6 @@ func generateWords(client *openai.Client, prompt string, count int, langName str
 		wordLang = "German"
 	}
 
-	// Extract level from the prompt (A1/A2/B1/B2)
 	level := "A2"
 	for _, l := range []string{"A1", "B2", "B1"} {
 		if strings.Contains(prompt, l) {

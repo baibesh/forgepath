@@ -16,11 +16,10 @@ import (
 
 func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClient) {
 
-	// Language selection (onboarding step 1)
 	b.Handle(&tele.Btn{Unique: "lang"}, func(c tele.Context) error {
 		data := c.Data()
 		userID := c.Sender().ID
-		log.Printf("[user=%d] callback lang=%s", userID, data)
+		log.Printf("[user=%d] onboarding lang=%s", userID, data)
 
 		validLangs := map[string]bool{"en": true, "de": true}
 		if !validLangs[data] {
@@ -39,11 +38,10 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: LevelSelectKeyboard()})
 	})
 
-	// Level selection (onboarding step 2)
 	b.Handle(&tele.Btn{Unique: "level"}, func(c tele.Context) error {
 		data := c.Data()
 		userID := c.Sender().ID
-		log.Printf("[user=%d] callback level=%s", userID, data)
+		log.Printf("[user=%d] onboarding level=%s", userID, data)
 
 		validLevels := map[string]bool{"A1": true, "A2": true, "B1": true, "B2": true, "C1": true}
 		if !validLevels[data] {
@@ -58,11 +56,10 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: TimezoneKeyboard()})
 	})
 
-	// Timezone selection (onboarding step 3)
 	b.Handle(&tele.Btn{Unique: "tz"}, func(c tele.Context) error {
 		data := c.Data()
 		userID := c.Sender().ID
-		log.Printf("[user=%d] callback tz=%s", userID, data)
+		log.Printf("[user=%d] onboarding tz=%s", userID, data)
 
 		if data == "custom" {
 			database.SetState(userID, "onboarding_tz_custom", map[string]string{})
@@ -76,14 +73,84 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		}
 
 		database.UpdateUserTimezone(userID, offset)
+		database.SetOnboarded(userID)
 		database.ClearState(userID)
 
 		c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Timezone: UTC+%d", offset)})
-		c.Edit(fmt.Sprintf("\u2705 Setup complete!\n\nTimezone: UTC+%d\nYou're all set! \U0001F680\n\nUse the menu or /help to see commands.", offset))
-		return c.Send("Let's go! \U0001F4AA")
+		return c.Edit(fmt.Sprintf("\u2705 Setup complete!\n\nTimezone: UTC+%d\nYou're all set! \U0001F680\n\nUse /help to see commands.", offset))
 	})
 
-	// Quiz answer
+	b.Handle(&tele.Btn{Unique: "settings"}, func(c tele.Context) error {
+		data := c.Data()
+		log.Printf("[user=%d] settings=%s", c.Sender().ID, data)
+		switch data {
+		case "timezone":
+			return c.Edit("\U0001F550 Select your timezone:", &tele.SendOptions{ReplyMarkup: SettingsTimezoneKeyboard()})
+		case "level":
+			return c.Edit("\U0001F4DA Select your level:", &tele.SendOptions{ReplyMarkup: SettingsLevelKeyboard()})
+		case "language":
+			return c.Edit("\U0001F310 Select your language:", &tele.SendOptions{ReplyMarkup: SettingsLanguageKeyboard()})
+		}
+		return nil
+	})
+
+	b.Handle(&tele.Btn{Unique: "setlang"}, func(c tele.Context) error {
+		data := c.Data()
+		userID := c.Sender().ID
+		log.Printf("[user=%d] setlang=%s", userID, data)
+
+		validLangs := map[string]bool{"en": true, "de": true}
+		if !validLangs[data] {
+			return c.Respond(&tele.CallbackResponse{Text: "Invalid language"})
+		}
+
+		database.UpdateUserLanguage(userID, data)
+		c.Respond(&tele.CallbackResponse{Text: "Language updated!"})
+		langName := "English"
+		if data == "de" {
+			langName = "Deutsch"
+		}
+		return c.Edit(fmt.Sprintf("\u2705 Language changed to *%s*!", langName),
+			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	})
+
+	b.Handle(&tele.Btn{Unique: "setlevel"}, func(c tele.Context) error {
+		data := c.Data()
+		userID := c.Sender().ID
+		log.Printf("[user=%d] setlevel=%s", userID, data)
+
+		validLevels := map[string]bool{"A1": true, "A2": true, "B1": true, "B2": true, "C1": true}
+		if !validLevels[data] {
+			return c.Respond(&tele.CallbackResponse{Text: "Invalid level"})
+		}
+
+		database.UpdateUserLevel(userID, data)
+		c.Respond(&tele.CallbackResponse{Text: "Level set to " + data})
+		return c.Edit(fmt.Sprintf("\u2705 Level changed to *%s*!", data),
+			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	})
+
+	b.Handle(&tele.Btn{Unique: "settz"}, func(c tele.Context) error {
+		data := c.Data()
+		userID := c.Sender().ID
+		log.Printf("[user=%d] settz=%s", userID, data)
+
+		if data == "custom" {
+			database.SetState(userID, "settings_tz_custom", map[string]string{})
+			c.Respond(&tele.CallbackResponse{Text: "Type your UTC offset"})
+			return c.Edit("Type your UTC offset (e.g. 5 for UTC+5, -3 for UTC-3):")
+		}
+
+		offset, err := strconv.Atoi(data)
+		if err != nil || offset < -12 || offset > 14 {
+			return c.Respond(&tele.CallbackResponse{Text: "Invalid timezone"})
+		}
+
+		database.UpdateUserTimezone(userID, offset)
+		c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Timezone: UTC+%d", offset)})
+		return c.Edit(fmt.Sprintf("\u2705 Timezone changed to UTC+%d!", offset))
+	})
+
 	b.Handle(&tele.Btn{Unique: "quiz"}, func(c tele.Context) error {
 		parts := strings.Split(c.Data(), "|")
 		if len(parts) != 2 {
@@ -100,7 +167,7 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		}
 
 		userID := c.Sender().ID
-		log.Printf("[user=%d] callback quiz word=%d idx=%d", userID, wordID, selectedIdx)
+		log.Printf("[user=%d] quiz word=%d idx=%d", userID, wordID, selectedIdx)
 
 		word, err := database.GetWordByID(wordID)
 		if err != nil {
@@ -129,9 +196,7 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 			tzOffset = user.TzOffset
 		}
 
-		// Get real SRS values
 		reps, interval, ease, _ := database.GetUserWordSRS(userID, wordID)
-
 		isCorrect := strings.Contains(selectedText, word.Definition)
 
 		if isCorrect {
@@ -152,11 +217,10 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	})
 
-	// Skip confirmation
 	b.Handle(&tele.Btn{Unique: "skip"}, func(c tele.Context) error {
 		data := c.Data()
 		userID := c.Sender().ID
-		log.Printf("[user=%d] callback skip=%s", userID, data)
+		log.Printf("[user=%d] skip=%s", userID, data)
 
 		if data == "cancel" {
 			c.Respond(&tele.CallbackResponse{Text: "Cancelled"})
@@ -177,27 +241,12 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		database.MarkWordDone(userID, user.TzOffset)
 		database.MarkWritingDone(userID, user.TzOffset)
 		database.MarkReviewDone(userID, user.TzOffset)
+		database.ClearState(userID)
 
 		c.Respond(&tele.CallbackResponse{Text: "Day skipped"})
 		return c.Edit(fmt.Sprintf("\u23ED Day skipped.\n\nSkips used: %d/2 this week.", user.SkipCount+1))
 	})
 
-	// Settings
-	b.Handle(&tele.Btn{Unique: "settings"}, func(c tele.Context) error {
-		data := c.Data()
-		log.Printf("[user=%d] callback settings=%s", c.Sender().ID, data)
-		switch data {
-		case "timezone":
-			return c.Edit("\U0001F550 Select your timezone:", &tele.SendOptions{ReplyMarkup: TimezoneKeyboard()})
-		case "level":
-			return c.Edit("\U0001F4DA Select your level:", &tele.SendOptions{ReplyMarkup: LevelSelectKeyboard()})
-		case "language":
-			return c.Edit("\U0001F310 Select your language:", &tele.SendOptions{ReplyMarkup: LanguageSelectKeyboard()})
-		}
-		return nil
-	})
-
-	// Media watched
 	b.Handle(&tele.Btn{Unique: "media"}, func(c tele.Context) error {
 		parts := strings.Split(c.Data(), "|")
 		if len(parts) != 2 || parts[0] != "done" {
@@ -210,7 +259,7 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		}
 
 		userID := c.Sender().ID
-		log.Printf("[user=%d] callback media done=%d", userID, mediaID)
+		log.Printf("[user=%d] media done=%d", userID, mediaID)
 
 		database.MarkMediaTaskSent(userID, mediaID)
 		c.Respond(&tele.CallbackResponse{Text: "Great! Task incoming..."})
@@ -236,7 +285,6 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		return c.Send(FormatMediaTask(media, grammarFocus), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	})
 
-	// Listen — TTS pronunciation
 	b.Handle(&tele.Btn{Unique: "listen"}, func(c tele.Context) error {
 		wordID, err := strconv.Atoi(c.Data())
 		if err != nil {
@@ -244,7 +292,7 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		}
 
 		userID := c.Sender().ID
-		log.Printf("[user=%d] callback listen word=%d", userID, wordID)
+		log.Printf("[user=%d] listen word=%d", userID, wordID)
 
 		word, err := database.GetWordByID(wordID)
 		if err != nil {
@@ -257,7 +305,6 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 
 		c.Respond(&tele.CallbackResponse{Text: "Generating audio..."})
 
-		// Generate TTS: word + example
 		ttsText := fmt.Sprintf("%s. %s", word.Word, word.Example)
 		audioPath, err := openaiClient.TextToSpeech(ttsText)
 		if err != nil {
@@ -268,26 +315,5 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 
 		voice := &tele.Voice{File: tele.FromDisk(audioPath)}
 		return c.Send(voice)
-	})
-
-	// Settings language change (outside onboarding)
-	b.Handle(&tele.Btn{Unique: "setlang"}, func(c tele.Context) error {
-		data := c.Data()
-		userID := c.Sender().ID
-		log.Printf("[user=%d] callback setlang=%s", userID, data)
-
-		validLangs := map[string]bool{"en": true, "de": true}
-		if !validLangs[data] {
-			return c.Respond(&tele.CallbackResponse{Text: "Invalid language"})
-		}
-
-		database.UpdateUserLanguage(userID, data)
-		c.Respond(&tele.CallbackResponse{Text: "Language updated!"})
-		langName := "English"
-		if data == "de" {
-			langName = "Deutsch"
-		}
-		return c.Edit(fmt.Sprintf("\u2705 Language changed to *%s*!", langName),
-			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	})
 }

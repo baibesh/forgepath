@@ -58,6 +58,72 @@ func TimezoneKeyboard() *tele.ReplyMarkup {
 	return menu
 }
 
+func SettingsKeyboard() *tele.ReplyMarkup {
+	menu := &tele.ReplyMarkup{}
+	menu.Inline(
+		menu.Row(
+			menu.Data("\U0001F550 Timezone", "settings", "timezone"),
+			menu.Data("\U0001F4DA Level", "settings", "level"),
+		),
+		menu.Row(
+			menu.Data("\U0001F310 Language", "settings", "language"),
+		),
+	)
+	return menu
+}
+
+func SettingsLanguageKeyboard() *tele.ReplyMarkup {
+	menu := &tele.ReplyMarkup{}
+	menu.Inline(
+		menu.Row(
+			menu.Data("\U0001F1EC\U0001F1E7 English", "setlang", "en"),
+			menu.Data("\U0001F1E9\U0001F1EA Deutsch", "setlang", "de"),
+		),
+	)
+	return menu
+}
+
+func SettingsLevelKeyboard() *tele.ReplyMarkup {
+	menu := &tele.ReplyMarkup{}
+	menu.Inline(
+		menu.Row(
+			menu.Data("A1", "setlevel", "A1"),
+			menu.Data("A2", "setlevel", "A2"),
+			menu.Data("B1", "setlevel", "B1"),
+		),
+		menu.Row(
+			menu.Data("B2", "setlevel", "B2"),
+			menu.Data("C1", "setlevel", "C1"),
+		),
+	)
+	return menu
+}
+
+func SettingsTimezoneKeyboard() *tele.ReplyMarkup {
+	menu := &tele.ReplyMarkup{}
+	menu.Inline(
+		menu.Row(
+			menu.Data("UTC+2 \U0001F1EA\U0001F1FA", "settz", "2"),
+			menu.Data("UTC+3 \U0001F1F7\U0001F1FA", "settz", "3"),
+			menu.Data("UTC+4", "settz", "4"),
+		),
+		menu.Row(
+			menu.Data("UTC+5 \U0001F1F0\U0001F1FF", "settz", "5"),
+			menu.Data("UTC+6 \U0001F1F0\U0001F1FF", "settz", "6"),
+			menu.Data("UTC+7", "settz", "7"),
+		),
+		menu.Row(
+			menu.Data("UTC+8", "settz", "8"),
+			menu.Data("UTC+9", "settz", "9"),
+			menu.Data("UTC+10", "settz", "10"),
+		),
+		menu.Row(
+			menu.Data("Other", "settz", "custom"),
+		),
+	)
+	return menu
+}
+
 func QuizKeyboard(wordID int, options []string, correctIdx int) *tele.ReplyMarkup {
 	menu := &tele.ReplyMarkup{}
 	letters := []string{"A", "B", "C", "D"}
@@ -75,20 +141,6 @@ func QuizKeyboard(wordID int, options []string, correctIdx int) *tele.ReplyMarku
 		))
 	}
 	menu.Inline(rows...)
-	return menu
-}
-
-func SettingsKeyboard() *tele.ReplyMarkup {
-	menu := &tele.ReplyMarkup{}
-	menu.Inline(
-		menu.Row(
-			menu.Data("\U0001F550 Timezone", "settings", "timezone"),
-			menu.Data("\U0001F4DA Level", "settings", "level"),
-		),
-		menu.Row(
-			menu.Data("\U0001F310 Language", "settings", "language"),
-		),
-	)
 	return menu
 }
 

@@ -106,7 +106,6 @@ func (j *Jobs) sendWordOfDay(user db.User) {
 	log.Printf("[cron][user=%d] word of day: %s", user.ID, word.Word)
 	j.sendMessage(user.ID, formatWordOfDayCron(word, grammar))
 
-	// Send review quiz with interactive buttons
 	reviewWords, _ := j.db.GetWordsForReview(user.ID, 2)
 	for _, rw := range reviewWords {
 		j.sendQuizWithButtons(user.ID, &rw)
@@ -169,7 +168,6 @@ func (j *Jobs) sendMediaRecommendation(user db.User) {
 
 	log.Printf("[cron][user=%d] media: %s", user.ID, media.Title)
 
-	// Send with interactive button
 	recipient := &tele.User{ID: user.ID}
 	_, sendErr := j.bot.Send(recipient,
 		fmt.Sprintf("\U0001F3AC *Today's Recommendation*\n\n"+

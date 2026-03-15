@@ -35,7 +35,6 @@ func main() {
 	bot.SetBotCommands(b)
 	cronScheduler := cron.StartScheduler(b, database, cfg)
 
-	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 

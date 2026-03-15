@@ -16,7 +16,6 @@ import (
 	"github.com/baibesh/forgepath/srs"
 )
 
-// SetBotCommands registers the "/" command menu visible in Telegram UI.
 func SetBotCommands(b *tele.Bot) {
 	commands := []tele.Command{
 		{Text: "today", Description: "Current tasks for today"},
@@ -26,6 +25,7 @@ func SetBotCommands(b *tele.Bot) {
 		{Text: "stats", Description: "View your progress"},
 		{Text: "words", Description: "Your learned words"},
 		{Text: "skip", Description: "Skip today (max 2/week)"},
+		{Text: "cancel", Description: "Cancel current task"},
 		{Text: "settings", Description: "Change language/level/timezone"},
 		{Text: "help", Description: "How the bot works"},
 	}
@@ -46,18 +46,17 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 			return c.Send("Something went wrong. Try again later.")
 		}
 
-		// Remove old reply keyboard if it was set
-		removeKB := &tele.ReplyMarkup{RemoveKeyboard: true}
-		c.Send("\u200B", &tele.SendOptions{ReplyMarkup: removeKB})
-
 		existing, err := database.GetUser(user.ID)
-		if err == nil && existing.Language != "" && existing.Level != "" && existing.TzOffset != 0 {
+		if err == nil && existing.Onboarded {
 			return c.Send(fmt.Sprintf(
 				"Welcome back, %s! %s\n\n%s %s | Level: *%s*\nTimezone: UTC+%d\n\nUse /help to see commands.",
 				user.FirstName, content.LanguageFlag(existing.Language),
 				content.LanguageFlag(existing.Language), content.LanguageName(existing.Language),
 				existing.Level, existing.TzOffset,
-			), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+			), &tele.SendOptions{
+				ParseMode:   tele.ModeMarkdown,
+				ReplyMarkup: &tele.ReplyMarkup{RemoveKeyboard: true},
+			})
 		}
 
 		database.SetState(user.ID, "onboarding_language", map[string]string{})
@@ -101,6 +100,17 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 		return handleSkip(c, database)
 	})
 
+	b.Handle("/cancel", func(c tele.Context) error {
+		userID := c.Sender().ID
+		log.Printf("[user=%d] /cancel", userID)
+		state, _ := database.GetState(userID)
+		if state.State == "idle" {
+			return c.Send("Nothing to cancel.")
+		}
+		database.ClearState(userID)
+		return c.Send("\u2705 Cancelled. You can start a new task anytime.")
+	})
+
 	b.Handle("/settings", func(c tele.Context) error {
 		log.Printf("[user=%d] /settings", c.Sender().ID)
 		return c.Send("\u2699\uFE0F *Settings*\n\nWhat would you like to change?",
@@ -123,6 +133,7 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 				"/write — start free writing\n"+
 				"/stats — view your progress\n"+
 				"/skip — skip today (max 2/week)\n"+
+				"/cancel — cancel current task\n"+
 				"/words — your learned words\n"+
 				"/settings — change timezone/level/language\n"+
 				"/help — this message\n\n"+
@@ -146,7 +157,6 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 		return handleText(c, database, openaiClient)
 	})
 
-	// Voice messages — transcribe with Whisper and process as text
 	b.Handle(tele.OnVoice, func(c tele.Context) error {
 		return handleVoice(c, b, database, openaiClient)
 	})
@@ -226,7 +236,6 @@ func sendQuizForWord(c tele.Context, database *db.DB, word *db.Word, openaiClien
 		return c.Send(FormatQuizTypeWord(word), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	}
 
-	// Fill-in-blank quiz (reps 0-2)
 	options := []string{word.Definition}
 	wrongOptions, _ := openaiClient.GenerateQuizOptions(word.Word, word.Definition, 3)
 	options = append(options, wrongOptions...)
@@ -341,7 +350,6 @@ func handleWordsList(c tele.Context, database *db.DB) error {
 func handleText(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) error {
 	userID := c.Sender().ID
 	text := strings.TrimSpace(c.Text())
-
 	if text == "" {
 		return nil
 	}
@@ -352,26 +360,93 @@ func handleText(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 	}
 
 	log.Printf("[user=%d] text in state=%s len=%d", userID, state.State, len(text))
+	return processTextInput(c, database, openaiClient, state, text)
+}
 
+func handleVoice(c tele.Context, b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClient) error {
+	userID := c.Sender().ID
+	voice := c.Message().Voice
+	if voice == nil {
+		return nil
+	}
+
+	log.Printf("[user=%d] voice message, duration=%ds", userID, voice.Duration)
+
+	if openaiClient == nil {
+		return c.Send("Voice recognition is not available right now.")
+	}
+
+	file, err := b.FileByID(voice.FileID)
+	if err != nil {
+		log.Printf("[user=%d] voice download error: %v", userID, err)
+		return c.Send("Could not process your voice message. Try again.")
+	}
+
+	tmpPath := fmt.Sprintf("/tmp/forgepath-voice-%d.ogg", userID)
+	if err := b.Download(&file, tmpPath); err != nil {
+		log.Printf("[user=%d] voice save error: %v", userID, err)
+		return c.Send("Could not process your voice message. Try again.")
+	}
+	defer os.Remove(tmpPath)
+
+	text, err := openaiClient.SpeechToText(tmpPath)
+	if err != nil {
+		log.Printf("[user=%d] transcription error: %v", userID, err)
+		return c.Send("Could not recognize your voice. Try sending text instead.")
+	}
+	if text == "" {
+		return c.Send("Could not hear anything. Try again or send text.")
+	}
+
+	log.Printf("[user=%d] transcribed: %s", userID, text)
+	c.Send(fmt.Sprintf("\U0001F399 _Heard:_ \"%s\"", escapeMarkdown(text)), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+
+	state, _ := database.GetState(userID)
+	if state.State == "idle" {
+		return c.Send("You can send voice messages when the bot is waiting for your text (writing, quiz, etc.)")
+	}
+
+	return processTextInput(c, database, openaiClient, state, text)
+}
+
+func processTextInput(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, state *db.UserState, text string) error {
 	switch state.State {
 	case "onboarding_tz_custom":
-		return handleOnboardingTzCustom(c, database)
+		return handleOnboardingTzCustom(c, database, text)
+	case "settings_tz_custom":
+		return handleSettingsTzCustom(c, database, text)
 	case "waiting_writing":
-		return handleWritingSubmit(c, database, openaiClient, state)
+		return processWriting(c, database, openaiClient, state, text)
 	case "waiting_quiz_typing":
-		return handleQuizTyping(c, database, state)
+		return processQuizTyping(c, database, state, text)
 	case "waiting_quiz_sentence":
-		return handleQuizSentence(c, database, openaiClient, state)
+		return processQuizSentence(c, database, openaiClient, state, text)
 	case "waiting_media_task":
-		return handleMediaTaskSubmit(c, database, openaiClient, state)
+		return processMediaTask(c, database, openaiClient, state, text)
 	default:
 		return nil
 	}
 }
 
-func handleOnboardingTzCustom(c tele.Context, database *db.DB) error {
+func handleOnboardingTzCustom(c tele.Context, database *db.DB, text string) error {
 	userID := c.Sender().ID
-	text := strings.TrimSpace(c.Text())
+
+	var offset int
+	_, err := fmt.Sscanf(text, "%d", &offset)
+	if err != nil || offset < -12 || offset > 14 {
+		return c.Send("Please enter a number between -12 and 14:")
+	}
+
+	database.UpdateUserTimezone(userID, offset)
+	database.SetOnboarded(userID)
+	database.ClearState(userID)
+
+	return c.Send(
+		fmt.Sprintf("\u2705 Setup complete!\n\nTimezone: UTC+%d\nYou're all set! \U0001F680\n\nUse /help to see commands.", offset))
+}
+
+func handleSettingsTzCustom(c tele.Context, database *db.DB, text string) error {
+	userID := c.Sender().ID
 
 	var offset int
 	_, err := fmt.Sscanf(text, "%d", &offset)
@@ -382,14 +457,11 @@ func handleOnboardingTzCustom(c tele.Context, database *db.DB) error {
 	database.UpdateUserTimezone(userID, offset)
 	database.ClearState(userID)
 
-	return c.Send(
-		fmt.Sprintf("\u2705 Setup complete!\n\nTimezone: UTC+%d\nYou're all set! \U0001F680\n\nUse the menu or /help to see commands.", offset),
-		)
+	return c.Send(fmt.Sprintf("\u2705 Timezone changed to UTC+%d!", offset))
 }
 
-func handleWritingSubmit(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, state *db.UserState) error {
+func processWriting(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, state *db.UserState, text string) error {
 	userID := c.Sender().ID
-	text := strings.TrimSpace(c.Text())
 
 	if len(text) < 10 {
 		return c.Send("Your text is too short. Write at least a few sentences!")
@@ -433,15 +505,13 @@ func handleWritingSubmit(c tele.Context, database *db.DB, openaiClient *ai.OpenA
 	return c.Send(feedback, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
-func handleQuizTyping(c tele.Context, database *db.DB, state *db.UserState) error {
+func processQuizTyping(c tele.Context, database *db.DB, state *db.UserState, text string) error {
 	userID := c.Sender().ID
-	text := strings.TrimSpace(strings.ToLower(c.Text()))
+	text = strings.TrimSpace(strings.ToLower(text))
 	answer := state.Context["answer"]
 
 	var wordID int
 	fmt.Sscanf(state.Context["word_id"], "%d", &wordID)
-
-	database.ClearState(userID)
 
 	user, _ := database.GetUser(userID)
 	tzOffset := 5
@@ -449,8 +519,9 @@ func handleQuizTyping(c tele.Context, database *db.DB, state *db.UserState) erro
 		tzOffset = user.TzOffset
 	}
 
-	// Get real SRS values
 	reps, interval, ease, _ := database.GetUserWordSRS(userID, wordID)
+
+	database.ClearState(userID)
 
 	if text == answer {
 		result := srs.Calculate(reps, interval, ease, 5)
@@ -471,15 +542,12 @@ func handleQuizTyping(c tele.Context, database *db.DB, state *db.UserState) erro
 	return c.Send("\u274C Not quite. You'll see this word again soon!")
 }
 
-func handleQuizSentence(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, state *db.UserState) error {
+func processQuizSentence(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, state *db.UserState, text string) error {
 	userID := c.Sender().ID
-	text := strings.TrimSpace(c.Text())
 	targetWord := state.Context["word"]
 
 	var wordID int
 	fmt.Sscanf(state.Context["word_id"], "%d", &wordID)
-
-	database.ClearState(userID)
 
 	if len(text) < 5 {
 		return c.Send("Write a full sentence, please!")
@@ -489,6 +557,8 @@ func handleQuizSentence(c tele.Context, database *db.DB, openaiClient *ai.OpenAI
 		return c.Send(fmt.Sprintf("\u274C Please use *%s* in your sentence!", escapeMarkdown(targetWord)),
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	}
+
+	database.ClearState(userID)
 
 	user, _ := database.GetUser(userID)
 	tzOffset := 5
@@ -511,243 +581,18 @@ func handleQuizSentence(c tele.Context, database *db.DB, openaiClient *ai.OpenAI
 	return c.Send("\u2705 Great sentence! Keep practicing! \U0001F4AA")
 }
 
-func handleVoice(c tele.Context, b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClient) error {
-	userID := c.Sender().ID
-	voice := c.Message().Voice
-	if voice == nil {
-		return nil
-	}
-
-	log.Printf("[user=%d] voice message, duration=%ds", userID, voice.Duration)
-
-	if openaiClient == nil {
-		return c.Send("Voice recognition is not available right now.")
-	}
-
-	// Download the voice file
-	file, err := b.FileByID(voice.FileID)
-	if err != nil {
-		log.Printf("[user=%d] voice download error: %v", userID, err)
-		return c.Send("Could not process your voice message. Try again.")
-	}
-
-	tmpPath := fmt.Sprintf("/tmp/forgepath-voice-%d.ogg", userID)
-	if err := b.Download(&file, tmpPath); err != nil {
-		log.Printf("[user=%d] voice save error: %v", userID, err)
-		return c.Send("Could not process your voice message. Try again.")
-	}
-	defer func() {
-		if err := removeFile(tmpPath); err != nil {
-			log.Printf("[user=%d] voice cleanup error: %v", userID, err)
-		}
-	}()
-
-	// Transcribe
-	text, err := openaiClient.SpeechToText(tmpPath)
-	if err != nil {
-		log.Printf("[user=%d] transcription error: %v", userID, err)
-		return c.Send("Could not recognize your voice. Try sending text instead.")
-	}
-
-	if text == "" {
-		return c.Send("Could not hear anything. Try again or send text.")
-	}
-
-	log.Printf("[user=%d] transcribed: %s", userID, text)
-	c.Send(fmt.Sprintf("\U0001F399 _Heard:_ \"%s\"", escapeMarkdown(text)), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
-
-	// Process transcribed text as if user typed it
-	state, err := database.GetState(userID)
-	if err != nil {
-		return nil
-	}
-
-	switch state.State {
-	case "waiting_writing":
-		return handleWritingSubmitFromText(c, database, openaiClient, state, text)
-	case "waiting_quiz_typing":
-		return handleQuizTypingFromText(c, database, state, text)
-	case "waiting_quiz_sentence":
-		return handleQuizSentenceFromText(c, database, openaiClient, state, text)
-	case "waiting_media_task":
-		return handleMediaTaskSubmitFromText(c, database, openaiClient, state, text)
-	default:
-		return c.Send("You can send voice messages when the bot is waiting for your text (writing, quiz, etc.)")
-	}
-}
-
-func handleWritingSubmitFromText(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, state *db.UserState, text string) error {
-	// Reuse existing logic by creating a fake text context
-	userID := c.Sender().ID
-
-	if len(text) < 10 {
-		return c.Send("Your text is too short. Write at least a few sentences!")
-	}
-	if len(text) > 3000 {
-		text = text[:3000]
-	}
-
-	wordCount := len(strings.Fields(text))
-	topic := state.Context["topic"]
-	grammarFocus := state.Context["grammar_focus"]
-
-	writingID, err := database.SaveWriting(userID, topic, grammarFocus, text, wordCount)
-	if err != nil {
-		log.Printf("[user=%d] save writing error: %v", userID, err)
-		return c.Send("Error saving your writing. Try again.")
-	}
-
-	user, _ := database.GetUser(userID)
-	tzOffset := 5
-	level := "A2"
-	language := "en"
-	if user != nil {
-		tzOffset = user.TzOffset
-		level = user.Level
-		language = user.Language
-	}
-
-	database.MarkWritingDone(userID, tzOffset)
-	database.ClearState(userID)
-
-	c.Send(fmt.Sprintf("\u2705 Saved! (%d words)\n\nAnalyzing...", wordCount))
-
-	feedback, err := openaiClient.CheckWriting(text, grammarFocus, level, language)
-	if err != nil {
-		log.Printf("[user=%d] AI feedback error writing=%d: %v", userID, writingID, err)
-		feedback = "AI feedback is not available right now. Keep writing!"
-	}
-
-	database.UpdateWritingFeedback(writingID, feedback)
-	return c.Send(feedback, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
-}
-
-func handleQuizTypingFromText(c tele.Context, database *db.DB, state *db.UserState, text string) error {
-	userID := c.Sender().ID
-	text = strings.TrimSpace(strings.ToLower(text))
-	answer := state.Context["answer"]
-
-	var wordID int
-	fmt.Sscanf(state.Context["word_id"], "%d", &wordID)
-
-	database.ClearState(userID)
-
-	user, _ := database.GetUser(userID)
-	tzOffset := 5
-	if user != nil {
-		tzOffset = user.TzOffset
-	}
-
-	reps, interval, ease, _ := database.GetUserWordSRS(userID, wordID)
-
-	if text == answer {
-		result := srs.Calculate(reps, interval, ease, 5)
-		database.UpdateWordReview(userID, wordID, result.IntervalDays, result.EaseFactor, result.Repetitions)
-		database.MarkReviewDone(userID, tzOffset)
-		return c.Send("\u2705 Correct! Great recall! \U0001F389")
-	}
-
-	result := srs.Calculate(reps, interval, ease, 1)
-	database.UpdateWordReview(userID, wordID, result.IntervalDays, result.EaseFactor, result.Repetitions)
-
-	word, _ := database.GetWordByID(wordID)
-	if word != nil {
-		return c.Send(fmt.Sprintf("\u274C Not quite.\n\nCorrect answer: *%s*\n(%s)",
-			escapeMarkdown(word.Word), escapeMarkdown(word.Definition)),
-			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
-	}
-	return c.Send("\u274C Not quite. You'll see this word again soon!")
-}
-
-func handleQuizSentenceFromText(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, state *db.UserState, text string) error {
-	userID := c.Sender().ID
-	targetWord := state.Context["word"]
-
-	var wordID int
-	fmt.Sscanf(state.Context["word_id"], "%d", &wordID)
-
-	database.ClearState(userID)
-
-	if len(text) < 5 {
-		return c.Send("Write a full sentence, please!")
-	}
-
-	if !strings.Contains(strings.ToLower(text), strings.ToLower(targetWord)) {
-		return c.Send(fmt.Sprintf("\u274C Please use *%s* in your sentence!", escapeMarkdown(targetWord)),
-			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
-	}
-
-	user, _ := database.GetUser(userID)
-	tzOffset := 5
-	if user != nil {
-		tzOffset = user.TzOffset
-	}
-
-	reps, interval, ease, _ := database.GetUserWordSRS(userID, wordID)
-	result := srs.Calculate(reps, interval, ease, 4)
-	database.UpdateWordReview(userID, wordID, result.IntervalDays, result.EaseFactor, result.Repetitions)
-	database.MarkReviewDone(userID, tzOffset)
-
-	if openaiClient != nil {
-		feedback, err := openaiClient.CheckSentences(text, targetWord)
-		if err == nil {
-			return c.Send("\u2705 Great sentence!\n\n"+feedback, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
-		}
-	}
-
-	return c.Send("\u2705 Great sentence! Keep practicing! \U0001F4AA")
-}
-
-func handleMediaTaskSubmitFromText(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, state *db.UserState, text string) error {
+func processMediaTask(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, state *db.UserState, text string) error {
 	userID := c.Sender().ID
 
 	var mediaID int
 	fmt.Sscanf(state.Context["media_id"], "%d", &mediaID)
 	mediaTitle := state.Context["media_title"]
 
-	database.ClearState(userID)
-
 	if len(text) < 10 {
 		return c.Send("Write at least a few sentences!")
 	}
 
-	user, _ := database.GetUser(userID)
-	tzOffset := 5
-	if user != nil {
-		tzOffset = user.TzOffset
-	}
-
-	database.SaveMediaTaskResponse(userID, mediaID, text)
-	database.MarkReviewDone(userID, tzOffset)
-
-	c.Send("\u2705 Saved! Checking your sentences...")
-
-	feedback, err := openaiClient.CheckSentences(text, mediaTitle)
-	if err != nil {
-		log.Printf("[user=%d] AI media feedback error: %v", userID, err)
-		return c.Send("Good job! Keep watching and writing! \U0001F4AA")
-	}
-
-	return c.Send(feedback, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
-}
-
-func removeFile(path string) error {
-	return os.Remove(path)
-}
-
-func handleMediaTaskSubmit(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, state *db.UserState) error {
-	userID := c.Sender().ID
-	text := strings.TrimSpace(c.Text())
-
-	var mediaID int
-	fmt.Sscanf(state.Context["media_id"], "%d", &mediaID)
-	mediaTitle := state.Context["media_title"]
-
 	database.ClearState(userID)
-
-	if len(text) < 10 {
-		return c.Send("Write at least a few sentences!")
-	}
 
 	user, _ := database.GetUser(userID)
 	tzOffset := 5

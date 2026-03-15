@@ -18,7 +18,6 @@ type WeeklyStats struct {
 	ReviewsDone  int
 }
 
-// UserLocalDate returns the user's current local date string based on tz_offset.
 func UserLocalDate(tzOffset int) string {
 	return time.Now().UTC().Add(time.Duration(tzOffset) * time.Hour).Format("2006-01-02")
 }

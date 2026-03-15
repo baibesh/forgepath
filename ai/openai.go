@@ -147,8 +147,6 @@ Return ONLY the keywords, nothing else.`, level, grammarFocus, todayWord)
 	return keywords, nil
 }
 
-// TextToSpeech generates an MP3 audio file from text using OpenAI TTS.
-// Returns the path to a temporary file that the caller must delete.
 func (o *OpenAIClient) TextToSpeech(text string) (string, error) {
 	if o == nil {
 		return "", fmt.Errorf("OpenAI client not configured")
@@ -182,7 +180,6 @@ func (o *OpenAIClient) TextToSpeech(text string) (string, error) {
 	return tmpFile.Name(), nil
 }
 
-// SpeechToText transcribes a voice message using OpenAI Whisper.
 func (o *OpenAIClient) SpeechToText(filePath string) (string, error) {
 	if o == nil {
 		return "", fmt.Errorf("OpenAI client not configured")

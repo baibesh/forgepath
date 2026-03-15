@@ -15,7 +15,6 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// YouTube Data API v3 response structs
 type SearchResponse struct {
 	Items         []SearchItem `json:"items"`
 	NextPageToken string       `json:"nextPageToken"`
@@ -224,7 +223,6 @@ func main() {
 			continue
 		}
 
-		// Get video details (duration, views, captions)
 		var videoIDs []string
 		for _, v := range videos {
 			videoIDs = append(videoIDs, v.ID.VideoID)
@@ -247,14 +245,12 @@ func main() {
 				continue
 			}
 
-			// Filter: >50K views
 			var viewCount int
 			fmt.Sscanf(detail.Statistics.ViewCount, "%d", &viewCount)
 			if viewCount < 50000 {
 				continue
 			}
 
-			// Filter: 2-15 min duration
 			duration := parseDuration(detail.ContentDetails.Duration)
 			if duration < 2*time.Minute || duration > 15*time.Minute {
 				continue
@@ -264,7 +260,6 @@ func main() {
 			durationStr := formatDuration(duration)
 			videoURL := "https://www.youtube.com/watch?v=" + v.ID.VideoID
 
-			// Extract tags from title + description
 			tags := extractTags(v.Snippet.Title, v.Snippet.Description, sq.topic)
 
 			_, err := database.Pool.Exec(context.Background(),
@@ -283,13 +278,11 @@ func main() {
 			log.Printf("  ✅ %s (%s, %d views)", v.Snippet.Title, durationStr, viewCount)
 		}
 
-		// Rate limit: YouTube API quota
 		time.Sleep(200 * time.Millisecond)
 	}
 
 	log.Printf("\nDone! Inserted/updated %d videos", totalInserted)
 
-	// Show total count
 	var count int
 	database.Pool.QueryRow(context.Background(), "SELECT COUNT(*) FROM media_resources").Scan(&count)
 	log.Printf("Total media in database: %d", count)
@@ -336,7 +329,6 @@ func getVideoDetails(apiKey string, videoIDs []string) ([]VideoItem, error) {
 	return result.Items, nil
 }
 
-// parseDuration parses ISO 8601 duration (PT5M30S)
 func parseDuration(iso string) time.Duration {
 	iso = strings.TrimPrefix(iso, "PT")
 	var d time.Duration
@@ -368,7 +360,6 @@ func formatDuration(d time.Duration) string {
 func extractTags(title, description, baseTags string) string {
 	tags := strings.Split(baseTags, ",")
 
-	// Extract keywords from title
 	keywords := []string{
 		"past simple", "present simple", "future simple",
 		"present continuous", "past continuous",
@@ -386,7 +377,6 @@ func extractTags(title, description, baseTags string) string {
 		}
 	}
 
-	// Deduplicate
 	seen := make(map[string]bool)
 	var unique []string
 	for _, t := range tags {
