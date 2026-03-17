@@ -55,7 +55,8 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 
 		if err == nil && existing.Onboarded {
 			m := userMessages(existing)
-			scheduleText := FormatSchedule(existing.Schedule)
+			lang := userLang(existing)
+			scheduleText := FormatSchedule(existing.Schedule, lang)
 			msg := m.StartReturning(
 				user.FirstName, content.LanguageFlag(existing.Language),
 				content.LanguageName(existing.Language), existing.Level,
@@ -63,10 +64,10 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 			)
 			c.Send(msg, &tele.SendOptions{
 				ParseMode:   tele.ModeMarkdown,
-				ReplyMarkup: ScheduleKeyboard(cfg.WebAppURL),
+				ReplyMarkup: ScheduleKeyboard(cfg.WebAppURL, lang),
 			})
 			return c.Send(m.ChooseAction, &tele.SendOptions{
-				ReplyMarkup: MainKeyboard(),
+				ReplyMarkup: MainKeyboard(lang),
 			})
 		}
 
@@ -74,7 +75,8 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 		return c.Send(fmt.Sprintf(
 			"Hey, %s! \U0001F44B\n\n"+
 				"What language do you want to learn?\n"+
-				"Welche Sprache möchtest du lernen?",
+				"Какой язык хочешь учить?\n"+
+				"Қай тілді үйренгің келеді?",
 			user.FirstName,
 		), &tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: LanguageSelectKeyboard()})
 	})
@@ -115,8 +117,9 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 	b.Handle("/settings", func(c tele.Context) error {
 		user, _ := database.GetUser(c.Sender().ID)
 		m := userMessages(user)
+		lang := userLang(user)
 		return c.Send(m.SettingsTitle,
-			&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: SettingsKeyboard()})
+			&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: SettingsKeyboard(lang)})
 	})
 
 	b.Handle("/help", func(c tele.Context) error {

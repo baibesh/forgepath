@@ -76,6 +76,7 @@ func handleWord(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 	}
 
 	m := userMessages(user)
+	lang := userLang(user)
 	word, err := database.GetRandomUnseen(user.ID, user.Level, user.Language)
 	if err != nil {
 		return c.Send(m.AllWordsLearned)
@@ -85,9 +86,9 @@ func handleWord(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 	database.MarkWordSeen(user.ID, word.ID)
 	database.MarkWordDone(user.ID, user.TzOffset)
 
-	if err := c.Send(FormatWordOfDay(word, grammar), &tele.SendOptions{
+	if err := c.Send(FormatWordOfDay(word, grammar, lang), &tele.SendOptions{
 		ParseMode:   tele.ModeMarkdown,
-		ReplyMarkup: ListenKeyboard(word.ID),
+		ReplyMarkup: ListenKeyboard(word.ID, lang),
 	}); err != nil {
 		log.Printf("[user=%d] send word error: %v", user.ID, err)
 		return err
@@ -97,6 +98,8 @@ func handleWord(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 }
 
 func sendQuizForWord(c tele.Context, database *db.DB, word *db.Word, openaiClient *ai.OpenAIClient) error {
+	user, _ := database.GetUser(c.Sender().ID)
+	lang := userLang(user)
 	reps, _ := database.GetUserWordRepetitions(c.Sender().ID, word.ID)
 
 	if reps >= 4 {
@@ -104,7 +107,7 @@ func sendQuizForWord(c tele.Context, database *db.DB, word *db.Word, openaiClien
 			"word_id": fmt.Sprintf("%d", word.ID),
 			"word":    word.Word,
 		})
-		return c.Send(FormatQuizMakeSentence(word), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+		return c.Send(FormatQuizMakeSentence(word, lang), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	}
 
 	if reps >= 3 {
@@ -112,13 +115,14 @@ func sendQuizForWord(c tele.Context, database *db.DB, word *db.Word, openaiClien
 			"word_id": fmt.Sprintf("%d", word.ID),
 			"answer":  strings.ToLower(word.Word),
 		})
-		return c.Send(FormatQuizTypeWord(word), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+		return c.Send(FormatQuizTypeWord(word, lang), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	}
 
-	return SendQuizPoll(c.Bot(), c.Recipient(), c.Sender().ID, word, openaiClient)
+	return SendQuizPoll(c.Bot(), c.Recipient(), c.Sender().ID, word, openaiClient, userLang(user))
 }
 
-func SendQuizPoll(b *tele.Bot, recipient tele.Recipient, userID int64, word *db.Word, openaiClient *ai.OpenAIClient) error {
+func SendQuizPoll(b *tele.Bot, recipient tele.Recipient, userID int64, word *db.Word, openaiClient *ai.OpenAIClient, lang string) error {
+	m := content.GetMessages(lang)
 	options := []string{word.Definition}
 	wrongOptions, _ := openaiClient.GenerateQuizOptions(word.Word, word.Definition, word.Language, 3)
 	options = append(options, wrongOptions...)
@@ -137,7 +141,7 @@ func SendQuizPoll(b *tele.Bot, recipient tele.Recipient, userID int64, word *db.
 
 	poll := &tele.Poll{
 		Type:          tele.PollQuiz,
-		Question:      fmt.Sprintf("What does \"%s\" mean?", word.Word),
+		Question:      m.QuizPollQuestion(word.Word),
 		CorrectOption: correctIdx,
 		Anonymous:     false,
 		Explanation:   fmt.Sprintf("%s — %s\n%s", word.Word, word.Definition, word.Example),
@@ -166,6 +170,7 @@ func handleQuiz(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 	}
 
 	m := userMessages(user)
+	lang := userLang(user)
 	words, err := database.GetWordsForReview(user.ID, 3)
 	if err != nil || len(words) == 0 {
 		return c.Send(m.NothingToReview)
@@ -183,7 +188,7 @@ func handleQuiz(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 			continue
 		}
 		if reps < 3 {
-			if err := SendQuizPoll(c.Bot(), c.Recipient(), user.ID, &word, openaiClient); err != nil {
+			if err := SendQuizPoll(c.Bot(), c.Recipient(), user.ID, &word, openaiClient, lang); err != nil {
 				log.Printf("[user=%d] quiz error word=%d: %v", user.ID, word.ID, err)
 			}
 		}
@@ -220,13 +225,14 @@ func handleStats(c tele.Context, database *db.DB) error {
 		return nil
 	}
 
+	lang := userLang(user)
 	streak, _ := database.GetCurrentStreak(user.ID, user.TzOffset)
 	wordCount, _ := database.GetUserWordCount(user.ID)
 	writingCount, _ := database.GetUserWritingCount(user.ID)
 	grammar, _ := database.GetCurrentGrammarFocus(user.ID)
 	weekly, _ := database.GetWeeklyStats(user.ID, user.TzOffset)
 
-	return c.Send(FormatStats(streak, wordCount, writingCount, grammar, weekly),
+	return c.Send(FormatStats(streak, wordCount, writingCount, grammar, weekly, lang),
 		&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
@@ -237,12 +243,13 @@ func handleSkip(c tele.Context, database *db.DB) error {
 	}
 
 	m := userMessages(user)
+	lang := userLang(user)
 	if user.SkipCount >= 2 {
 		return c.Send(m.SkipMaxReached)
 	}
 
 	return c.Send(m.SkipConfirm(2-user.SkipCount),
-		&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: SkipConfirmKeyboard()})
+		&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: SkipConfirmKeyboard(lang)})
 }
 
 func handleWordsList(c tele.Context, database *db.DB) error {

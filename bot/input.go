@@ -9,17 +9,21 @@ import (
 	tele "gopkg.in/telebot.v3"
 
 	"github.com/baibesh/forgepath/ai"
+	"github.com/baibesh/forgepath/content"
 	"github.com/baibesh/forgepath/db"
 	"github.com/baibesh/forgepath/srs"
 )
 
-var buttonCommands = map[string]string{
-	"\U0001F31F New word":    "/word",
-	"\u270D\uFE0F Write":    "/write",
-	"\U0001F9E9 Quiz":       "/quiz",
-	"\U0001F4CB Today":      "/today",
-	"\U0001F4CA Progress":   "/stats",
-	"\u2699\uFE0F Settings": "/settings",
+func buttonCommandsForLang(lang string) map[string]string {
+	m := content.GetMessages(lang)
+	return map[string]string{
+		m.BtnNewWord:  "/word",
+		m.BtnWrite:    "/write",
+		m.BtnQuiz:     "/quiz",
+		m.BtnToday:    "/today",
+		m.BtnProgress: "/stats",
+		m.BtnSettings: "/settings",
+	}
 }
 
 func handleText(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) error {
@@ -29,10 +33,14 @@ func handleText(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 		return nil
 	}
 
-	if cmd, ok := buttonCommands[text]; ok {
-		log.Printf("[user=%d] button -> %s", userID, cmd)
-		c.Message().Text = cmd
-		return routeButtonCommand(c, database, openaiClient, cmd)
+	// Try matching button text for all supported languages
+	for _, lang := range []string{"en", "ru", "kk"} {
+		cmds := buttonCommandsForLang(lang)
+		if cmd, ok := cmds[text]; ok {
+			log.Printf("[user=%d] button -> %s", userID, cmd)
+			c.Message().Text = cmd
+			return routeButtonCommand(c, database, openaiClient, cmd)
+		}
 	}
 
 	state, err := database.GetState(userID)
@@ -47,6 +55,7 @@ func handleText(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 func routeButtonCommand(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, cmd string) error {
 	user, _ := database.GetUser(c.Sender().ID)
 	m := userMessages(user)
+	lang := userLang(user)
 	state, _ := database.GetState(c.Sender().ID)
 	if state.State != "idle" && state.State != "" {
 		database.ClearState(c.Sender().ID)
@@ -65,8 +74,8 @@ func routeButtonCommand(c tele.Context, database *db.DB, openaiClient *ai.OpenAI
 	case "/stats":
 		return handleStats(c, database)
 	case "/settings":
-		return c.Send("\u2699\uFE0F *Settings*\n\nWhat do you want to change?",
-			&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: SettingsKeyboard()})
+		return c.Send(m.SettingsTitle,
+			&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: SettingsKeyboard(lang)})
 	}
 	return nil
 }
@@ -149,6 +158,7 @@ func handleOnboardingTzCustom(c tele.Context, database *db.DB, openaiClient *ai.
 	userID := c.Sender().ID
 	user, _ := database.GetUser(userID)
 	m := userMessages(user)
+	lang := userLang(user)
 
 	var offset int
 	_, err := fmt.Sscanf(text, "%d", &offset)
@@ -169,14 +179,14 @@ func handleOnboardingTzCustom(c tele.Context, database *db.DB, openaiClient *ai.
 			grammar, _ := database.GetCurrentGrammarFocus(userID)
 			database.MarkWordSeen(userID, word.ID)
 			database.MarkWordDone(userID, user.TzOffset)
-			c.Send(FormatWordOfDay(word, grammar), &tele.SendOptions{
+			c.Send(FormatWordOfDay(word, grammar, lang), &tele.SendOptions{
 				ParseMode:   tele.ModeMarkdown,
-				ReplyMarkup: MainKeyboard(),
+				ReplyMarkup: MainKeyboard(lang),
 			})
 			return sendQuizForWord(c, database, word, openaiClient)
 		}
 	}
-	return c.Send("You're all set! Use the buttons below.", &tele.SendOptions{ReplyMarkup: MainKeyboard()})
+	return c.Send(m.ChooseAction, &tele.SendOptions{ReplyMarkup: MainKeyboard(lang)})
 }
 
 func handleSettingsTzCustom(c tele.Context, database *db.DB, text string) error {
@@ -289,7 +299,7 @@ func processQuizSentence(c tele.Context, database *db.DB, openaiClient *ai.OpenA
 	}
 
 	if !strings.Contains(strings.ToLower(text), strings.ToLower(targetWord)) {
-		return c.Send(fmt.Sprintf("Try using the word *%s* in your sentence!", escapeMarkdown(targetWord)),
+		return c.Send(m.TryUseWord(escapeMarkdown(targetWord)),
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	}
 

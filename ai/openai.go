@@ -23,20 +23,40 @@ func NewOpenAIClient(apiKey string) *OpenAIClient {
 	return &OpenAIClient{client: openai.NewClient(apiKey)}
 }
 
+func langFullName(code string) string {
+	switch code {
+	case "ru":
+		return "English"
+	case "kk":
+		return "English"
+	default:
+		return "English"
+	}
+}
+
+func uiLangName(code string) string {
+	switch code {
+	case "ru":
+		return "Russian"
+	case "kk":
+		return "Kazakh"
+	default:
+		return "Russian"
+	}
+}
+
 func (o *OpenAIClient) CheckWriting(text, grammarFocus, level, language string) (string, error) {
 	if o == nil {
 		return "AI feedback is not available right now. Keep writing!", nil
 	}
 
-	langName := "English"
-	if language == "de" {
-		langName = "German"
-	}
+	targetLang := langFullName(language)
+	uiLang := uiLangName(language)
 
-	prompt := fmt.Sprintf(`You are a %s language tutor for a Russian-speaking %s student.
-Grammar focus this week: %s
+	prompt := fmt.Sprintf(`You are an %s language tutor. The student speaks %s.
+Their level: %s. Grammar focus this week: %s
 
-Review the following text and respond in this EXACT format:
+Review the following text and respond in %s in this EXACT format:
 ✅ Good: (1-2 things done well)
 ❌ Errors: (each error → correction, explain briefly)
 💡 Better version: (rewrite 1-2 sentences more naturally)
@@ -46,7 +66,7 @@ Review the following text and respond in this EXACT format:
 Under 150 words. Direct but encouraging.
 
 Student's text:
-%s`, langName, level, grammarFocus, grammarFocus, text)
+%s`, targetLang, uiLang, level, grammarFocus, uiLang, grammarFocus, text)
 
 	return o.complete(prompt)
 }
@@ -56,17 +76,15 @@ func (o *OpenAIClient) CheckSentences(sentences, mediaTitle, level, language str
 		return "AI feedback is not available right now. Good job writing!", nil
 	}
 
-	langName := "English"
-	if language == "de" {
-		langName = "German"
-	}
+	targetLang := langFullName(language)
+	uiLang := uiLangName(language)
 
-	prompt := fmt.Sprintf(`You are a %s language tutor for a Russian-speaking %s student.
+	prompt := fmt.Sprintf(`You are an %s language tutor. The student speaks %s. Level: %s.
 They watched: "%s"
 They wrote these sentences as a post-watching task.
 
 Check grammar, suggest improvements. Be brief and encouraging.
-Format:
+Respond in %s. Format:
 ✅ Good: (what's correct)
 ❌ Fix: (corrections with brief explanations)
 💡 Better: (improved versions)
@@ -74,7 +92,7 @@ Format:
 Under 100 words.
 
 Student wrote:
-%s`, langName, level, mediaTitle, sentences)
+%s`, targetLang, uiLang, level, mediaTitle, uiLang, sentences)
 
 	return o.complete(prompt)
 }
@@ -84,10 +102,7 @@ func (o *OpenAIClient) GenerateQuizOptions(word, definition, language string, co
 		return defaultQuizOptions(definition, language), nil
 	}
 
-	defLang := "Russian"
-	if language == "de" {
-		defLang = "Russian"
-	}
+	defLang := uiLangName(language)
 
 	prompt := fmt.Sprintf(`Generate %d wrong answer options for a vocabulary quiz.
 The word is: "%s" and the correct definition is: "%s"
@@ -114,14 +129,18 @@ Return ONLY the wrong options, one per line, no numbering, no quotes.`, count, w
 	return options[:count], nil
 }
 
-func (o *OpenAIClient) GenerateWeeklyReport(wordsLearned, writingsDone, streakDays int, grammarFocus, level string) (string, error) {
+func (o *OpenAIClient) GenerateWeeklyReport(wordsLearned, writingsDone, streakDays int, grammarFocus, level, language string) (string, error) {
 	if o == nil {
 		return fmt.Sprintf("Great week! %d words learned, %d writings done, %d day streak!", wordsLearned, writingsDone, streakDays), nil
 	}
 
-	prompt := fmt.Sprintf(`Write a brief, encouraging weekly report for an %s language learner (Russian-speaking).
+	uiLang := uiLangName(language)
+
+	prompt := fmt.Sprintf(`Write a brief, encouraging weekly report for an English language learner.
+Their native language is %s, level: %s.
 Stats: %d words learned, %d writings completed, %d day streak, grammar focus: %s.
-2-3 sentences. Encouraging but specific. Include one tip for next week. In English.`, level, wordsLearned, writingsDone, streakDays, grammarFocus)
+2-3 sentences. Encouraging but specific. Include one tip for next week.
+Write your response in %s.`, uiLang, level, wordsLearned, writingsDone, streakDays, grammarFocus, uiLang)
 
 	return o.complete(prompt)
 }
@@ -131,7 +150,7 @@ func (o *OpenAIClient) SuggestMediaKeywords(grammarFocus, todayWord, level strin
 		return []string{grammarFocus}, nil
 	}
 
-	prompt := fmt.Sprintf(`You help pick YouTube videos for an %s language learner.
+	prompt := fmt.Sprintf(`You help pick YouTube videos for an %s English language learner.
 Their grammar focus: %s
 Today's word: %s
 
@@ -215,13 +234,6 @@ func defaultQuizOptions(definition, language string) []string {
 		"увеличить", "радоваться", "бежать быстро",
 		"запомнить", "согласиться", "потерять надежду",
 		"пробовать", "исчезнуть", "собирать вместе",
-	}
-	if language == "de" {
-		defaults = []string{
-			"vergrößern", "sich freuen", "schnell laufen",
-			"vergessen", "zustimmen", "verschwinden",
-			"versuchen", "zusammen sammeln", "sich entscheiden",
-		}
 	}
 	var result []string
 	for _, d := range defaults {

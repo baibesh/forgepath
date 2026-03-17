@@ -113,11 +113,11 @@ func (j *Jobs) sendWordOfDay(user db.User) {
 	j.db.MarkWordDone(user.ID, user.TzOffset)
 
 	log.Printf("[cron][user=%d] word of day: %s", user.ID, word.Word)
-	j.sendMessage(user.ID, bot.FormatWordOfDay(word, grammar))
+	j.sendMessage(user.ID, bot.FormatWordOfDay(word, grammar, user.Language))
 
 	reviewWords, _ := j.db.GetWordsForReview(user.ID, 2)
 	for _, rw := range reviewWords {
-		j.sendQuizPoll(user.ID, &rw)
+		j.sendQuizPoll(user, &rw)
 	}
 }
 
@@ -171,16 +171,16 @@ func (j *Jobs) sendMediaRecommendation(user db.User) {
 
 	recipient := &tele.User{ID: user.ID}
 	_, sendErr := j.bot.Send(recipient,
-		bot.FormatMediaRecommendation(media),
-		&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: bot.MediaDoneKeyboard(media.ID)})
+		bot.FormatMediaRecommendation(media, user.Language),
+		&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: bot.MediaDoneKeyboard(media.ID, user.Language)})
 	if sendErr != nil {
 		log.Printf("[cron][user=%d] send media error, trying fallback: %v", user.ID, sendErr)
 		fallback, err := j.db.GetUnseenMedia(user.ID, user.Level, user.Language)
 		if err == nil && fallback.ID != media.ID {
 			j.db.MarkMediaSent(user.ID, fallback.ID)
 			_, retryErr := j.bot.Send(recipient,
-				bot.FormatMediaRecommendation(fallback),
-				&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: bot.MediaDoneKeyboard(fallback.ID)})
+				bot.FormatMediaRecommendation(fallback, user.Language),
+				&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: bot.MediaDoneKeyboard(fallback.ID, user.Language)})
 			if retryErr != nil {
 				log.Printf("[cron][user=%d] fallback media also failed: %v", user.ID, retryErr)
 			}
@@ -188,14 +188,13 @@ func (j *Jobs) sendMediaRecommendation(user db.User) {
 	}
 }
 
-
-
 func (j *Jobs) sendDailyReview(user db.User) {
 	streak, _ := j.db.GetTodayStreak(user.ID, user.TzOffset)
 	if streak.ReviewDone {
 		return
 	}
 
+	m := content.GetMessages(user.Language)
 	streakDays, _ := j.db.GetCurrentStreak(user.ID, user.TzOffset)
 
 	check := func(done bool) string {
@@ -206,28 +205,40 @@ func (j *Jobs) sendDailyReview(user db.User) {
 	}
 
 	log.Printf("[cron][user=%d] daily review (streak=%d)", user.ID, streakDays)
-	j.sendMessage(user.ID, fmt.Sprintf("\U0001F31B *End of day!*\n\n"+
-		"%s New word\n%s Writing\n%s Quiz\n\n\U0001F525 *%d days* in a row!\n\n"+
-		"Take a /quiz to complete today!",
-		check(streak.WordDone), check(streak.WritingDone), check(streak.ReviewDone), streakDays))
+	j.sendMessage(user.ID, fmt.Sprintf("%s\n\n"+
+		"%s %s\n%s %s\n%s %s\n\n\U0001F525 *%d* %s!\n\n"+
+		"%s",
+		m.LabelEndOfDay,
+		check(streak.WordDone), m.LabelWord,
+		check(streak.WritingDone), m.LabelWriting,
+		check(streak.ReviewDone), m.LabelQuiz,
+		streakDays, m.LabelStreak,
+		m.LabelTakeQuiz))
 }
 
 func (j *Jobs) sendWeeklyReport(user db.User) {
+	m := content.GetMessages(user.Language)
 	weekly, _ := j.db.GetWeeklyStats(user.ID, user.TzOffset)
 	streakDays, _ := j.db.GetCurrentStreak(user.ID, user.TzOffset)
 	grammar, _ := j.db.GetCurrentGrammarFocus(user.ID)
 
 	grammarFocus := bot.GrammarTenseName(grammar)
 
-	report, err := j.openai.GenerateWeeklyReport(weekly.WordsDone, weekly.WritingsDone, streakDays, grammarFocus, user.Level)
+	report, err := j.openai.GenerateWeeklyReport(weekly.WordsDone, weekly.WritingsDone, streakDays, grammarFocus, user.Level, user.Language)
 	if err != nil {
 		report = fmt.Sprintf("Nice work this week! %d words learned, %d texts written, %d day streak!", weekly.WordsDone, weekly.WritingsDone, streakDays)
 	}
 
 	log.Printf("[cron][user=%d] weekly report", user.ID)
-	j.sendMessage(user.ID, fmt.Sprintf("\U0001F389 *Your week!*\n\n"+
-		"\U0001F4D6 Words: %d\n\u270D\uFE0F Writings: %d\n\U0001F9E9 Quizzes: %d\n\U0001F525 Streak: %d days\n\n%s\n\nNew grammar topic starts now!",
-		weekly.WordsDone, weekly.WritingsDone, weekly.ReviewsDone, streakDays, report))
+	j.sendMessage(user.ID, fmt.Sprintf("%s\n\n"+
+		"\U0001F4D6 %s: %d\n\u270D\uFE0F %s: %d\n\U0001F9E9 %s: %d\n\U0001F525 %s: %d\n\n%s\n\n%s",
+		m.LabelYourWeek,
+		m.LabelWords, weekly.WordsDone,
+		m.LabelWritings, weekly.WritingsDone,
+		m.LabelQuizzes, weekly.ReviewsDone,
+		m.LabelStreak, streakDays,
+		report,
+		m.LabelNewGrammar))
 
 	j.db.AdvanceGrammarWeek(user.ID)
 	j.db.ResetWeeklySkips(user.ID)
@@ -241,9 +252,9 @@ func (j *Jobs) sendMessage(userID int64, text string) {
 	}
 }
 
-func (j *Jobs) sendQuizPoll(userID int64, word *db.Word) {
-	recipient := &tele.User{ID: userID}
-	if err := bot.SendQuizPoll(j.bot, recipient, userID, word, j.openai); err != nil {
-		log.Printf("[cron][user=%d] send quiz poll error: %v", userID, err)
+func (j *Jobs) sendQuizPoll(user db.User, word *db.Word) {
+	recipient := &tele.User{ID: user.ID}
+	if err := bot.SendQuizPoll(j.bot, recipient, user.ID, word, j.openai, user.Language); err != nil {
+		log.Printf("[cron][user=%d] send quiz poll error: %v", user.ID, err)
 	}
 }

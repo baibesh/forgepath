@@ -10,9 +10,7 @@ import (
 func Run(pool *pgxpool.Pool) {
 	ctx := context.Background()
 	seedGrammarWeeksEN(pool, ctx)
-	seedGrammarWeeksDE(pool, ctx)
 	seedWordsEN(pool, ctx)
-	seedWordsDE(pool, ctx)
 	seedMediaEN(pool, ctx)
 	log.Println("Seeding completed")
 }
@@ -87,63 +85,6 @@ func seedGrammarWeeksEN(pool *pgxpool.Pool, ctx context.Context) {
 		pool.Exec(ctx,
 			`INSERT INTO grammar_weeks (week_num, family, focus, tense_name, anchor, markers, formula, example, language)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'en')
-			 ON CONFLICT (week_num, language) DO UPDATE SET
-			   family = EXCLUDED.family, focus = EXCLUDED.focus, tense_name = EXCLUDED.tense_name,
-			   anchor = EXCLUDED.anchor, markers = EXCLUDED.markers, formula = EXCLUDED.formula, example = EXCLUDED.example`,
-			w.num, w.family, w.focus, w.tenseName, w.anchor, w.markers, w.formula, w.ex)
-	}
-}
-
-func seedGrammarWeeksDE(pool *pgxpool.Pool, ctx context.Context) {
-	weeks := []struct {
-		num                                                    int
-		family, focus, tenseName, anchor, markers, formula, ex string
-	}{
-		{1, "Einfach", "Pr\u00e4sens", "Pr\u00e4sens",
-			"\U0001F504 Карусель — повторяется снова и снова. Pr\u00e4sens — это привычки, факты и расписание. В немецком это главное время: даже о будущем часто говорят в Pr\u00e4sens!",
-			"immer, oft, jeden Tag, manchmal, normalerweise",
-			"S + Verb (ich -e, du -st, er/sie -t, wir -en)",
-			"Ich lerne jeden Tag Deutsch."},
-		{2, "Einfach", "Pr\u00e4teritum", "Pr\u00e4teritum",
-			"\U0001F6AA Закрытая дверь — завершено и в прошлом. Pr\u00e4teritum используют в письменной речи и рассказах. В разговоре чаще Perfekt, но для sein/haben/wollen — всегда Pr\u00e4teritum!",
-			"gestern, letztes Jahr, damals, vor einer Woche, fr\u00fcher",
-			"S + Verb (Pr\u00e4teritum-Stamm + Endung)",
-			"Ich ging gestern ins Kino."},
-		{3, "Zusammengesetzt", "Perfekt", "Perfekt",
-			"\U0001F309 Мост — связь прошлого с настоящим. Perfekt — главное прошедшее время в разговорном немецком! Секрет: haben + Partizip II для большинства глаголов, sein — для движения и изменения состояния.",
-			"schon, bereits, gerade, noch nicht, heute",
-			"S + haben/sein + ... + Partizip II",
-			"Ich habe das Buch gelesen."},
-		{4, "Einfach", "Futur I", "Futur I",
-			"\U0001F52E Хрустальный шар — планы и предположения. Фишка: в немецком будущее часто выражают через Pr\u00e4sens + слово времени. Futur I звучит формальнее и подчёркивает намерение.",
-			"morgen, n\u00e4chste Woche, bald, in Zukunft, wahrscheinlich",
-			"S + werden + ... + Infinitiv",
-			"Ich werde morgen nach Berlin fahren."},
-		{5, "Konjunktiv", "Konjunktiv II", "Konjunktiv II",
-			"\U0001F4AD Облачко мыслей — мечты и нереальные ситуации. Если бы да кабы... Konjunktiv II — это «хотел бы», «было бы». Лайфхак: w\u00fcrde + Infinitiv работает почти всегда.",
-			"wenn, h\u00e4tte, w\u00fcrde, k\u00f6nnte, gern",
-			"S + w\u00fcrde + ... + Infinitiv / h\u00e4tte / w\u00e4re",
-			"Wenn ich reich w\u00e4re, w\u00fcrde ich reisen."},
-		{6, "Zusammengesetzt", "Plusquamperfekt", "Plusquamperfekt",
-			"\u23EA Перемотка — действие ДО другого прошлого. Два события в прошлом: Plusquamperfekt — то, что было первым. Строится как Perfekt, но hatte/war вместо habe/bin.",
-			"bevor, nachdem, bereits, schon (Vergangenheit)",
-			"S + hatte/war + ... + Partizip II",
-			"Ich hatte gegessen, bevor sie kam."},
-		{7, "Passiv", "Passiv Pr\u00e4sens", "Passiv Pr\u00e4sens",
-			"\U0001F3AD Маска — кто делает неважно, важно ЧТО происходит. Пассив переключает фокус с человека на действие. Формула простая: werden + Partizip II. Очень часто в новостях и инструкциях.",
-			"von, durch, es wird, wurde",
-			"S + werden + ... + Partizip II",
-			"Das Haus wird renoviert."},
-		{8, "Zusammengesetzt", "Futur II", "Futur II",
-			"\U0001F3C1 Финишная черта — к определённому моменту будет сделано. Также используется для предположений о прошлом: «Er wird es vergessen haben» = наверное забыл.",
-			"bis morgen, bis n\u00e4chste Woche, wohl, wahrscheinlich",
-			"S + werden + ... + Partizip II + haben/sein",
-			"Bis morgen werde ich das Buch gelesen haben."},
-	}
-	for _, w := range weeks {
-		pool.Exec(ctx,
-			`INSERT INTO grammar_weeks (week_num, family, focus, tense_name, anchor, markers, formula, example, language)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'de')
 			 ON CONFLICT (week_num, language) DO UPDATE SET
 			   family = EXCLUDED.family, focus = EXCLUDED.focus, tense_name = EXCLUDED.tense_name,
 			   anchor = EXCLUDED.anchor, markers = EXCLUDED.markers, formula = EXCLUDED.formula, example = EXCLUDED.example`,
@@ -295,92 +236,6 @@ func seedWordsEN(pool *pgxpool.Pool, ctx context.Context) {
 		{"streamline", "упростить, оптимизировать", "We need to streamline our processes.", "B2", "streamline operations, streamline workflow", "streamline + noun"},
 		{"elaborate", "подробно объяснить", "Could you elaborate on that point?", "B2", "elaborate on, elaborate plan", "elaborate + on + noun"},
 		{"in a nutshell", "в двух словах", "In a nutshell, the project was a success.", "B2", "put it in a nutshell", "in a nutshell + clause"},
-	})
-}
-
-func seedWordsDE(pool *pgxpool.Pool, ctx context.Context) {
-	// ==================== A1 ====================
-	insertWords(pool, ctx, "de", []wordSeed{
-		{"hallo", "привет", "Hallo! Wie geht es dir?", "A1", "Hallo sagen, Hallo zusammen", "Hallo + Name"},
-		{"danke", "спасибо", "Danke f\u00fcr deine Hilfe.", "A1", "vielen Dank, danke sch\u00f6n", "danke + f\u00fcr"},
-		{"bitte", "пожалуйста", "Kann ich bitte etwas Wasser haben?", "A1", "ja bitte, bitte sch\u00f6n", "bitte + Verb"},
-		{"gut", "хороший", "Das Essen ist sehr gut.", "A1", "guten Morgen, guten Tag, sehr gut", "gut + Nomen"},
-		{"schlecht", "плохой", "Das Wetter ist schlecht.", "A1", "schlechtes Wetter, schlecht gelaunt", "schlecht + Nomen"},
-		{"gro\u00df", "большой", "Berlin ist eine gro\u00dfe Stadt.", "A1", "gro\u00dfe Stadt, gro\u00dfe Familie", "gro\u00df + Nomen"},
-		{"klein", "маленький", "Ich habe einen kleinen Hund.", "A1", "kleine Stadt, kleines Kind", "klein + Nomen"},
-		{"gehen", "идти", "Ich gehe jeden Tag zur Arbeit.", "A1", "nach Hause gehen, spazieren gehen", "gehen + Richtung"},
-		{"kommen", "приходить", "Komm bitte her!", "A1", "nach Hause kommen, aus ... kommen", "kommen + Richtung"},
-		{"essen", "есть", "Ich esse Fr\u00fchst\u00fcck um 8 Uhr.", "A1", "zu Mittag essen, zu Abend essen", "essen + Akk"},
-		{"trinken", "пить", "Ich trinke morgens Kaffee.", "A1", "Wasser trinken, Tee trinken", "trinken + Akk"},
-		{"schlafen", "спать", "Ich schlafe 8 Stunden pro Nacht.", "A1", "gut schlafen, schlafen gehen", "schlafen + Zeitangabe"},
-		{"arbeiten", "работать", "Ich arbeite in einem B\u00fcro.", "A1", "hart arbeiten, von zu Hause arbeiten", "arbeiten + in/bei"},
-		{"lernen", "учить", "Ich lerne jeden Tag Deutsch.", "A1", "Deutsch lernen, f\u00fcr die Pr\u00fcfung lernen", "lernen + Akk"},
-		{"sprechen", "говорить", "Sprechen Sie Deutsch?", "A1", "Deutsch sprechen, langsam sprechen", "sprechen + Sprache / mit"},
-		{"lesen", "читать", "Ich lese gern B\u00fccher.", "A1", "ein Buch lesen, Zeitung lesen", "lesen + Akk"},
-		{"schreiben", "писать", "Bitte schreiben Sie Ihren Namen.", "A1", "einen Brief schreiben, aufschreiben", "schreiben + Akk"},
-		{"m\u00f6gen", "любить, нравиться", "Ich mag Pizza.", "A1", "gern m\u00f6gen, ich mag", "m\u00f6gen + Akk"},
-		{"wollen", "хотеть", "Ich will Deutsch lernen.", "A1", "ich will, wollen wir", "wollen + Inf"},
-		{"k\u00f6nnen", "мочь", "Ich kann schwimmen.", "A1", "kann ich, k\u00f6nnen Sie", "k\u00f6nnen + Inf"},
-		{"wissen", "знать", "Ich wei\u00df das nicht.", "A1", "ich wei\u00df, Bescheid wissen", "wissen + Akk / dass"},
-		{"verstehen", "понимать", "Ich verstehe die Frage nicht.", "A1", "gut verstehen, richtig verstehen", "verstehen + Akk"},
-		{"helfen", "помогать", "K\u00f6nnen Sie mir helfen?", "A1", "jemandem helfen, gern helfen", "helfen + Dat"},
-		{"brauchen", "нуждаться", "Ich brauche deine Hilfe.", "A1", "dringend brauchen, Hilfe brauchen", "brauchen + Akk"},
-		{"Haus", "дом", "Ich wohne in einem kleinen Haus.", "A1", "zu Hause, nach Hause", "in/zu + Haus"},
-		{"Familie", "семья", "Meine Familie ist gro\u00df.", "A1", "meine Familie, Familienmitglied", "Familie + Nomen"},
-		{"Freund", "друг", "Er ist mein bester Freund.", "A1", "bester Freund, guter Freund", "Freund + von"},
-		{"Zeit", "время", "Ich habe keine Zeit.", "A1", "keine Zeit, freie Zeit, viel Zeit", "Zeit + f\u00fcr"},
-		{"Tag", "день", "Heute ist ein sch\u00f6ner Tag.", "A1", "guten Tag, jeden Tag, sch\u00f6ner Tag", "Tag + Wochentag"},
-		{"Wasser", "вода", "Ich trinke jeden Morgen Wasser.", "A1", "kaltes Wasser, hei\u00dfes Wasser", "Wasser + Adjektiv"},
-		{"Geld", "деньги", "Ich habe nicht viel Geld.", "A1", "Geld sparen, Geld ausgeben", "Geld + f\u00fcr"},
-		{"gl\u00fccklich", "счастливый", "Ich bin heute sehr gl\u00fccklich.", "A1", "gl\u00fccklich sein, gl\u00fccklich machen", "gl\u00fccklich + \u00fcber"},
-		{"m\u00fcde", "усталый", "Ich bin sehr m\u00fcde nach der Arbeit.", "A1", "m\u00fcde sein, m\u00fcde werden", "m\u00fcde + von"},
-	})
-
-	// ==================== A2 ====================
-	insertWords(pool, ctx, "de", []wordSeed{
-		{"sich freuen", "радоваться", "Ich freue mich auf das Wochenende.", "A2", "sich freuen auf, sich freuen \u00fcber", "sich freuen auf + Akk / \u00fcber + Akk"},
-		{"sich entscheiden", "решиться", "Er hat sich f\u00fcr das rote Auto entschieden.", "A2", "sich schnell entscheiden, sich entscheiden f\u00fcr", "sich entscheiden f\u00fcr + Akk"},
-		{"anfangen", "начинать", "Der Film f\u00e4ngt um 8 Uhr an.", "A2", "anfangen mit, anfangen zu arbeiten", "anfangen mit + Dat / zu + Inf"},
-		{"aufh\u00f6ren", "прекращать", "H\u00f6r bitte auf zu reden.", "A2", "aufh\u00f6ren mit, aufh\u00f6ren zu rauchen", "aufh\u00f6ren mit + Dat / zu + Inf"},
-		{"sich gew\u00f6hnen", "привыкнуть", "Ich gew\u00f6hne mich an das kalte Wetter.", "A2", "sich gew\u00f6hnen an, sich daran gew\u00f6hnen", "sich gew\u00f6hnen an + Akk"},
-		{"vorschlagen", "предлагать", "Ich schlage vor, ins Kino zu gehen.", "A2", "einen Vorschlag machen, vorschlagen zu", "vorschlagen + zu + Inf"},
-		{"sich k\u00fcmmern", "заботиться", "Sie k\u00fcmmert sich um ihre Eltern.", "A2", "sich k\u00fcmmern um, darum k\u00fcmmern", "sich k\u00fcmmern um + Akk"},
-		{"abh\u00e4ngen", "зависеть", "Das h\u00e4ngt vom Wetter ab.", "A2", "abh\u00e4ngen von, davon abh\u00e4ngen", "abh\u00e4ngen von + Dat"},
-		{"sich vorbereiten", "готовиться", "Ich bereite mich auf die Pr\u00fcfung vor.", "A2", "sich vorbereiten auf, gut vorbereiten", "sich vorbereiten auf + Akk"},
-		{"verbessern", "улучшить", "Ich m\u00f6chte mein Deutsch verbessern.", "A2", "sich verbessern, Leistung verbessern", "verbessern + Akk"},
-		{"bemerken", "заметить", "Ich habe den Fehler nicht bemerkt.", "A2", "sofort bemerken, kaum bemerken", "bemerken + Akk / dass"},
-		{"empfehlen", "рекомендовать", "Ich empfehle dir dieses Restaurant.", "A2", "sehr empfehlen, weiterempfehlen", "empfehlen + Dat + Akk"},
-		{"sich erinnern", "вспоминать", "Ich erinnere mich an den Urlaub.", "A2", "sich erinnern an, sich gut erinnern", "sich erinnern an + Akk"},
-		{"sich interessieren", "интересоваться", "Ich interessiere mich f\u00fcr Kunst.", "A2", "sich interessieren f\u00fcr, sich sehr interessieren", "sich interessieren f\u00fcr + Akk"},
-		{"trotzdem", "тем не менее", "Es regnete, trotzdem ging er spazieren.", "A2", "trotzdem machen, trotzdem kommen", "trotzdem + Hauptsatz"},
-		{"eigentlich", "на самом деле", "Eigentlich wollte ich zu Hause bleiben.", "A2", "eigentlich nicht, eigentlich schon", "eigentlich + Verb"},
-		{"wahrscheinlich", "вероятно", "Er kommt wahrscheinlich morgen.", "A2", "sehr wahrscheinlich, wahrscheinlich nicht", "wahrscheinlich + Verb"},
-		{"deshalb", "поэтому", "Ich war m\u00fcde, deshalb bin ich fr\u00fch ins Bett gegangen.", "A2", "genau deshalb, deshalb auch", "deshalb + Verb (Position 1)"},
-		{"obwohl", "хотя", "Obwohl es kalt war, ging sie ohne Jacke.", "A2", "obwohl es schwer ist, obwohl ich wei\u00df", "obwohl + Nebensatz"},
-		{"gem\u00fctlich", "уютный", "Das Caf\u00e9 ist sehr gem\u00fctlich.", "A2", "gem\u00fctliche Atmosph\u00e4re, gem\u00fctlicher Abend", "gem\u00fctlich + Nomen"},
-		{"schaffen", "справиться", "Ich habe es geschafft!", "A2", "es schaffen, rechtzeitig schaffen", "schaffen + Akk"},
-		{"vermissen", "скучать", "Ich vermisse meine Familie.", "A2", "jemanden vermissen, sehr vermissen", "vermissen + Akk"},
-		{"sich entschuldigen", "извиниться", "Ich entschuldige mich f\u00fcr den Fehler.", "A2", "sich entschuldigen f\u00fcr, bei jemandem", "sich entschuldigen f\u00fcr + Akk"},
-		{"sich lohnen", "стоить того", "Es lohnt sich, Deutsch zu lernen.", "A2", "sich lohnen zu, es lohnt sich", "sich lohnen + zu + Inf"},
-		{"au\u00dferdem", "кроме того", "Au\u00dferdem habe ich keine Zeit.", "A2", "au\u00dferdem noch, au\u00dferdem auch", "au\u00dferdem + Hauptsatz"},
-	})
-
-	// ==================== B1 ====================
-	insertWords(pool, ctx, "de", []wordSeed{
-		{"sich auseinandersetzen", "разбираться, анализировать", "Man muss sich mit dem Problem auseinandersetzen.", "B1", "sich auseinandersetzen mit, kritisch", "sich auseinandersetzen mit + Dat"},
-		{"beitragen", "вносить вклад", "Jeder kann zum Erfolg beitragen.", "B1", "beitragen zu, viel beitragen", "beitragen zu + Dat"},
-		{"verzichten", "отказаться", "Er verzichtet auf S\u00fc\u00dfigkeiten.", "B1", "verzichten auf, freiwillig verzichten", "verzichten auf + Akk"},
-		{"beeinflussen", "влиять", "Die Medien beeinflussen die Meinung.", "B1", "stark beeinflussen, positiv beeinflussen", "beeinflussen + Akk"},
-		{"erheblich", "значительный", "Es gab erhebliche Ver\u00e4nderungen.", "B1", "erheblich steigen, erhebliche Unterschiede", "erheblich + Nomen / Verb"},
-		{"Zusammenhang", "связь, контекст", "In diesem Zusammenhang ist es wichtig.", "B1", "im Zusammenhang mit, in diesem Zusammenhang", "Zusammenhang + mit/zwischen"},
-		{"dennoch", "тем не менее", "Es war schwer, dennoch hat er es geschafft.", "B1", "aber dennoch, und dennoch", "dennoch + Hauptsatz"},
-		{"sowohl...als auch", "как...так и", "Sowohl Kinder als auch Erwachsene waren begeistert.", "B1", "sowohl A als auch B", "sowohl + A + als auch + B"},
-		{"weder...noch", "ни...ни", "Weder er noch sie waren zu Hause.", "B1", "weder A noch B", "weder + A + noch + B"},
-		{"auf dem Laufenden bleiben", "быть в курсе", "Ich versuche, auf dem Laufenden zu bleiben.", "B1", "auf dem Laufenden halten, immer auf dem Laufenden", "auf dem Laufenden + bleiben/halten"},
-		{"den Nagel auf den Kopf treffen", "попасть в точку", "Mit deinem Kommentar hast du den Nagel auf den Kopf getroffen.", "B1", "genau den Nagel, damit den Nagel", "den Nagel auf den Kopf treffen"},
-		{"unter vier Augen", "наедине", "K\u00f6nnen wir unter vier Augen sprechen?", "B1", "unter vier Augen reden, besprechen", "unter vier Augen + Verb"},
-		{"in Betracht ziehen", "принять во внимание", "Man sollte alle M\u00f6glichkeiten in Betracht ziehen.", "B1", "in Betracht ziehen ob, ernsthaft", "in Betracht ziehen + Akk / ob"},
-		{"sich herausstellen", "оказаться", "Es hat sich herausgestellt, dass er recht hatte.", "B1", "es stellte sich heraus, sich als ... herausstellen", "sich herausstellen + dass"},
 	})
 }
 

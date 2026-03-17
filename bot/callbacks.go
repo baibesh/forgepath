@@ -10,6 +10,7 @@ import (
 	tele "gopkg.in/telebot.v3"
 
 	"github.com/baibesh/forgepath/ai"
+	"github.com/baibesh/forgepath/content"
 	"github.com/baibesh/forgepath/db"
 	"github.com/baibesh/forgepath/srs"
 )
@@ -21,7 +22,7 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		userID := c.Sender().ID
 		log.Printf("[user=%d] onboarding lang=%s", userID, data)
 
-		validLangs := map[string]bool{"en": true, "de": true}
+		validLangs := map[string]bool{"en": true, "ru": true, "kk": true}
 		if !validLangs[data] {
 			return c.Respond(&tele.CallbackResponse{Text: "Invalid language"})
 		}
@@ -63,6 +64,7 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 
 		user, _ := database.GetUser(userID)
 		m := userMessages(user)
+		lang := userLang(user)
 
 		if data == "custom" {
 			database.SetState(userID, "onboarding_tz_custom", map[string]string{})
@@ -89,29 +91,35 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 				grammar, _ := database.GetCurrentGrammarFocus(userID)
 				database.MarkWordSeen(userID, word.ID)
 				database.MarkWordDone(userID, user.TzOffset)
-				c.Send(FormatWordOfDay(word, grammar), &tele.SendOptions{
+				c.Send(FormatWordOfDay(word, grammar, lang), &tele.SendOptions{
 					ParseMode:   tele.ModeMarkdown,
-					ReplyMarkup: MainKeyboard(),
+					ReplyMarkup: MainKeyboard(lang),
 				})
 				return sendQuizForWord(c, database, word, openaiClient)
 			}
 		}
-		return c.Send(m.ChooseAction, &tele.SendOptions{ReplyMarkup: MainKeyboard()})
+		return c.Send(m.ChooseAction, &tele.SendOptions{ReplyMarkup: MainKeyboard(lang)})
 	})
 
 	b.Handle(&tele.Btn{Unique: "settings"}, func(c tele.Context) error {
 		data := c.Data()
-		log.Printf("[user=%d] settings=%s", c.Sender().ID, data)
+		userID := c.Sender().ID
+		log.Printf("[user=%d] settings=%s", userID, data)
+
+		user, _ := database.GetUser(userID)
+		m := userMessages(user)
+		lang := userLang(user)
+
 		switch data {
 		case "timezone":
-			return c.Edit("\U0001F550 Select your timezone:", &tele.SendOptions{ReplyMarkup: SettingsTimezoneKeyboard()})
+			return c.Edit(m.BtnTimezone+":", &tele.SendOptions{ReplyMarkup: SettingsTimezoneKeyboard()})
 		case "level":
-			return c.Edit("\U0001F4DA Select your level:", &tele.SendOptions{ReplyMarkup: SettingsLevelKeyboard()})
+			return c.Edit(m.BtnLevel+":", &tele.SendOptions{ReplyMarkup: SettingsLevelKeyboard()})
 		case "language":
-			return c.Edit("\U0001F310 Select your language:", &tele.SendOptions{ReplyMarkup: SettingsLanguageKeyboard()})
+			return c.Edit(m.BtnLanguage+":", &tele.SendOptions{ReplyMarkup: SettingsLanguageKeyboard()})
 		case "schedule":
 			if webAppURL != "" {
-				return c.Edit("\U0001F514 Set your notification times:", &tele.SendOptions{ReplyMarkup: ScheduleKeyboard(webAppURL)})
+				return c.Edit(m.BtnSchedule+":", &tele.SendOptions{ReplyMarkup: ScheduleKeyboard(webAppURL, lang)})
 			}
 			return c.Respond(&tele.CallbackResponse{Text: "Schedule settings not available"})
 		}
@@ -123,18 +131,15 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		userID := c.Sender().ID
 		log.Printf("[user=%d] setlang=%s", userID, data)
 
-		validLangs := map[string]bool{"en": true, "de": true}
+		validLangs := map[string]bool{"en": true, "ru": true, "kk": true}
 		if !validLangs[data] {
 			return c.Respond(&tele.CallbackResponse{Text: "Invalid language"})
 		}
 
 		database.UpdateUserLanguage(userID, data)
 		c.Respond(&tele.CallbackResponse{Text: "Language updated!"})
-		langName := "English"
-		if data == "de" {
-			langName = "Deutsch"
-		}
-		return c.Edit(fmt.Sprintf("\u2705 Language changed to *%s*!", langName),
+		langName := content.LanguageName(data)
+		return c.Edit(fmt.Sprintf("\u2705 %s: *%s*!", content.GetMessages(data).BtnLanguage, langName),
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	})
 
@@ -150,7 +155,7 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 
 		database.UpdateUserLevel(userID, data)
 		c.Respond(&tele.CallbackResponse{Text: "Level set to " + data})
-		return c.Edit(fmt.Sprintf("\u2705 Level changed to *%s*!", data),
+		return c.Edit(fmt.Sprintf("\u2705 Level: *%s*!", data),
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	})
 
@@ -159,10 +164,13 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		userID := c.Sender().ID
 		log.Printf("[user=%d] settz=%s", userID, data)
 
+		user, _ := database.GetUser(userID)
+		m := userMessages(user)
+
 		if data == "custom" {
 			database.SetState(userID, "settings_tz_custom", map[string]string{})
 			c.Respond(&tele.CallbackResponse{Text: "Type your UTC offset"})
-			return c.Edit("Type your UTC offset (e.g. 5 for UTC+5, -3 for UTC-3):")
+			return c.Edit(m.TzCustomPrompt)
 		}
 
 		offset, err := strconv.Atoi(data)
@@ -172,7 +180,7 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 
 		database.UpdateUserTimezone(userID, offset)
 		c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Timezone: %s", FormatUTCOffset(offset))})
-		return c.Edit(fmt.Sprintf("\u2705 Timezone changed to %s!", FormatUTCOffset(offset)))
+		return c.Edit(fmt.Sprintf("\u2705 Timezone: %s!", FormatUTCOffset(offset)))
 	})
 
 	b.Handle(&tele.Btn{Unique: "quiz"}, func(c tele.Context) error {
@@ -224,16 +232,16 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 			result := srs.Calculate(reps, interval, ease, 4)
 			database.UpdateWordReview(userID, wordID, result.IntervalDays, result.EaseFactor, result.Repetitions)
 			database.MarkReviewDone(userID, tzOffset)
-			c.Respond(&tele.CallbackResponse{Text: "\u2705 Yes!"})
-			return c.Edit(fmt.Sprintf("\u2705 *You got it!*\n\n*%s* — %s",
+			c.Respond(&tele.CallbackResponse{Text: "\u2705"})
+			return c.Edit(fmt.Sprintf("\u2705 *%s* — %s",
 				escapeMarkdown(word.Word), escapeMarkdown(word.Definition)),
 				&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 		}
 
 		result := srs.Calculate(reps, interval, ease, 1)
 		database.UpdateWordReview(userID, wordID, result.IntervalDays, result.EaseFactor, result.Repetitions)
-		c.Respond(&tele.CallbackResponse{Text: "Not this time"})
-		return c.Edit(fmt.Sprintf("\u274C The answer was: *%s* — %s\n\nNo worries, you'll see it again!",
+		c.Respond(&tele.CallbackResponse{Text: "\u274C"})
+		return c.Edit(fmt.Sprintf("\u274C *%s* — %s",
 			escapeMarkdown(word.Word), escapeMarkdown(word.Definition)),
 			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	})
@@ -284,13 +292,16 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		userID := c.Sender().ID
 		log.Printf("[user=%d] media done=%d", userID, mediaID)
 
+		user, _ := database.GetUser(userID)
+		lang := userLang(user)
+
 		database.MarkMediaTaskSent(userID, mediaID)
-		c.Respond(&tele.CallbackResponse{Text: "Great! Task incoming..."})
+		c.Respond(&tele.CallbackResponse{Text: "OK"})
 
 		_, media, err := database.GetPendingMediaTask(userID)
 		if err != nil {
 			log.Printf("[user=%d] media task error: %v", userID, err)
-			return c.Edit("\u2705 Marked as watched!")
+			return c.Edit("\u2705")
 		}
 
 		grammar, _ := database.GetCurrentGrammarFocus(userID)
@@ -301,8 +312,8 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 			"media_title": media.Title,
 		})
 
-		c.Edit("\u2705 Marked as watched!")
-		return c.Send(FormatMediaTask(media, grammarFocus), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+		c.Edit("\u2705")
+		return c.Send(FormatMediaTask(media, grammarFocus, lang), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	})
 
 	b.Handle(&tele.Btn{Unique: "listen"}, func(c tele.Context) error {

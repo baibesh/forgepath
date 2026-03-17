@@ -31,24 +31,13 @@ func (d *DB) GetCurrentGrammarFocus(userID int64) (*GrammarWeek, error) {
 }
 
 func DefaultGrammar(language string) *GrammarWeek {
-	switch language {
-	case "de":
-		return &GrammarWeek{
-			TenseName: "Präsens",
-			Family:    "Einfach",
-			Anchor:    "\U0001F504 Карусель — повторяется снова и снова. Präsens — привычки и факты.",
-			Formula:   "S + Verb (ich -e, du -st, er/sie -t, wir -en)",
-			Markers:   "immer, oft, jeden Tag, manchmal",
-			Language:  "de",
-		}
-	default:
-		return &GrammarWeek{
-			TenseName: "Past Simple",
-			Family:    "Simple",
-			Anchor:    "\U0001F6AA Закрытая дверь — действие завершено, дверь захлопнулась. Представь дверь, которая закрылась — назад не вернёшься.",
-			Formula:   "S + V2 (ed / irregular)",
-			Markers:   "yesterday, last week, ago",
-			Language:  "en",
-		}
+	// Default grammar is always English (the target learning language)
+	return &GrammarWeek{
+		TenseName: "Past Simple",
+		Family:    "Simple",
+		Anchor:    "\U0001F6AA Закрытая дверь — действие завершено, дверь захлопнулась. Представь дверь, которая закрылась — назад не вернёшься.",
+		Formula:   "S + V2 (ed / irregular)",
+		Markers:   "yesterday, last week, ago",
+		Language:  "en",
 	}
 }

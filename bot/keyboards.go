@@ -4,20 +4,23 @@ import (
 	"fmt"
 
 	tele "gopkg.in/telebot.v3"
+
+	"github.com/baibesh/forgepath/content"
 )
 
-func MainKeyboard() *tele.ReplyMarkup {
+func MainKeyboard(lang string) *tele.ReplyMarkup {
+	m := content.GetMessages(lang)
 	menu := &tele.ReplyMarkup{ResizeKeyboard: true}
 	menu.Reply(
 		menu.Row(
-			menu.Text("\U0001F31F New word"),
-			menu.Text("\u270D\uFE0F Write"),
-			menu.Text("\U0001F9E9 Quiz"),
+			menu.Text(m.BtnNewWord),
+			menu.Text(m.BtnWrite),
+			menu.Text(m.BtnQuiz),
 		),
 		menu.Row(
-			menu.Text("\U0001F4CB Today"),
-			menu.Text("\U0001F4CA Progress"),
-			menu.Text("\u2699\uFE0F Settings"),
+			menu.Text(m.BtnToday),
+			menu.Text(m.BtnProgress),
+			menu.Text(m.BtnSettings),
 		),
 	)
 	return menu
@@ -28,7 +31,10 @@ func LanguageSelectKeyboard() *tele.ReplyMarkup {
 	menu.Inline(
 		menu.Row(
 			menu.Data("\U0001F1EC\U0001F1E7 English", "lang", "en"),
-			menu.Data("\U0001F1E9\U0001F1EA Deutsch", "lang", "de"),
+			menu.Data("\U0001F1F7\U0001F1FA Русский", "lang", "ru"),
+		),
+		menu.Row(
+			menu.Data("\U0001F1F0\U0001F1FF Қазақша", "lang", "kk"),
 		),
 	)
 	return menu
@@ -75,16 +81,17 @@ func TimezoneKeyboard() *tele.ReplyMarkup {
 	return menu
 }
 
-func SettingsKeyboard() *tele.ReplyMarkup {
+func SettingsKeyboard(lang string) *tele.ReplyMarkup {
+	m := content.GetMessages(lang)
 	menu := &tele.ReplyMarkup{}
 	menu.Inline(
 		menu.Row(
-			menu.Data("\U0001F550 Timezone", "settings", "timezone"),
-			menu.Data("\U0001F4DA Level", "settings", "level"),
+			menu.Data(m.BtnTimezone, "settings", "timezone"),
+			menu.Data(m.BtnLevel, "settings", "level"),
 		),
 		menu.Row(
-			menu.Data("\U0001F310 Language", "settings", "language"),
-			menu.Data("\U0001F514 Schedule", "settings", "schedule"),
+			menu.Data(m.BtnLanguage, "settings", "language"),
+			menu.Data(m.BtnSchedule, "settings", "schedule"),
 		),
 	)
 	return menu
@@ -101,7 +108,10 @@ func SettingsLanguageKeyboard() *tele.ReplyMarkup {
 	menu.Inline(
 		menu.Row(
 			menu.Data("\U0001F1EC\U0001F1E7 English", "setlang", "en"),
-			menu.Data("\U0001F1E9\U0001F1EA Deutsch", "setlang", "de"),
+			menu.Data("\U0001F1F7\U0001F1FA Русский", "setlang", "ru"),
+		),
+		menu.Row(
+			menu.Data("\U0001F1F0\U0001F1FF Қазақша", "setlang", "kk"),
 		),
 	)
 	return menu
@@ -168,43 +178,47 @@ func QuizKeyboard(wordID int, options []string, correctIdx int) *tele.ReplyMarku
 	return menu
 }
 
-func SkipConfirmKeyboard() *tele.ReplyMarkup {
+func SkipConfirmKeyboard(lang string) *tele.ReplyMarkup {
+	m := content.GetMessages(lang)
 	menu := &tele.ReplyMarkup{}
 	menu.Inline(
 		menu.Row(
-			menu.Data("\u2705 Yes, skip", "skip", "confirm"),
-			menu.Data("\u274C No, I'll do it", "skip", "cancel"),
+			menu.Data(m.BtnYesSkip, "skip", "confirm"),
+			menu.Data(m.BtnNoSkip, "skip", "cancel"),
 		),
 	)
 	return menu
 }
 
-func ListenKeyboard(wordID int) *tele.ReplyMarkup {
+func ListenKeyboard(wordID int, lang string) *tele.ReplyMarkup {
+	m := content.GetMessages(lang)
 	menu := &tele.ReplyMarkup{}
 	menu.Inline(
 		menu.Row(
-			menu.Data("\U0001F50A Listen", "listen", fmt.Sprintf("%d", wordID)),
+			menu.Data(m.BtnListen, "listen", fmt.Sprintf("%d", wordID)),
 		),
 	)
 	return menu
 }
 
-func MediaDoneKeyboard(mediaID int) *tele.ReplyMarkup {
+func MediaDoneKeyboard(mediaID int, lang string) *tele.ReplyMarkup {
+	m := content.GetMessages(lang)
 	menu := &tele.ReplyMarkup{}
 	menu.Inline(
 		menu.Row(
-			menu.Data("\u2705 Done watching!", "media", fmt.Sprintf("done|%d", mediaID)),
+			menu.Data(m.BtnDoneWatching, "media", fmt.Sprintf("done|%d", mediaID)),
 		),
 	)
 	return menu
 }
 
-func ScheduleKeyboard(webAppURL string) *tele.ReplyMarkup {
+func ScheduleKeyboard(webAppURL, lang string) *tele.ReplyMarkup {
+	m := content.GetMessages(lang)
 	menu := &tele.ReplyMarkup{}
 	rows := []tele.Row{}
 	if webAppURL != "" {
 		rows = append(rows, menu.Row(
-			menu.WebApp("\u2699\uFE0F Customize schedule", &tele.WebApp{URL: webAppURL + "/schedule"}),
+			menu.WebApp(m.BtnCustomize, &tele.WebApp{URL: webAppURL + "/schedule"}),
 		))
 	}
 	menu.Inline(rows...)
