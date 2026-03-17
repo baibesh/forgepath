@@ -231,7 +231,7 @@ export async function POST(req: Request) {
 
   // Insert word (upsert to handle race conditions with unique constraint)
   const newWord = await prisma.word.upsert({
-    where: { words_word_lang_unique: { word, language: "en" } },
+    where: { word_language: { word, language: "en" } },
     update: {
       definition: info.definition,
       example: info.example,
