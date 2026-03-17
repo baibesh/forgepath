@@ -229,9 +229,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Word not found" }, { status: 404 });
   }
 
-  // Insert word
-  const newWord = await prisma.word.create({
-    data: {
+  // Insert word (upsert to handle race conditions with unique constraint)
+  const newWord = await prisma.word.upsert({
+    where: { words_word_lang_unique: { word, language: "en" } },
+    update: {
+      definition: info.definition,
+      example: info.example,
+      collocations: info.collocations,
+      construction: info.construction,
+    },
+    create: {
       word,
       definition: info.definition,
       example: info.example,
@@ -243,8 +250,10 @@ export async function POST(req: Request) {
   });
 
   // Link to user
-  await prisma.userWord.create({
-    data: {
+  await prisma.userWord.upsert({
+    where: { user_id_word_id: { user_id: userId, word_id: newWord.id } },
+    update: {},
+    create: {
       user_id: userId,
       word_id: newWord.id,
       seen_at: new Date(),

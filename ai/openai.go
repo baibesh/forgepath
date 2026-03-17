@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -270,41 +271,33 @@ If the word doesn't exist or is not English, return:
 	text = strings.TrimSuffix(text, "```")
 	text = strings.TrimSpace(text)
 
-	if strings.Contains(text, `"error"`) {
-		return nil, fmt.Errorf("word not found")
+	var parsed struct {
+		Definition   string `json:"definition"`
+		Example      string `json:"example"`
+		Collocations string `json:"collocations"`
+		Construction string `json:"construction"`
+		Error        string `json:"error"`
 	}
 
-	// Simple JSON parsing without encoding/json import
-	get := func(key string) string {
-		idx := strings.Index(text, `"`+key+`"`)
-		if idx < 0 {
-			return ""
-		}
-		rest := text[idx+len(key)+3:]
-		start := strings.Index(rest, `"`)
-		if start < 0 {
-			return ""
-		}
-		rest = rest[start+1:]
-		end := strings.Index(rest, `"`)
-		if end < 0 {
-			return ""
-		}
-		return rest[:end]
-	}
-
-	info := &WordInfo{
-		Definition:   get("definition"),
-		Example:      get("example"),
-		Collocations: get("collocations"),
-		Construction: get("construction"),
-	}
-
-	if info.Definition == "" {
+	if err := json.Unmarshal([]byte(text), &parsed); err != nil {
+		log.Printf("LookupWord JSON parse error: %v, raw: %s", err, text)
 		return nil, fmt.Errorf("could not parse word info")
 	}
 
-	return info, nil
+	if parsed.Error != "" {
+		return nil, fmt.Errorf("word not found")
+	}
+
+	if parsed.Definition == "" {
+		return nil, fmt.Errorf("could not parse word info")
+	}
+
+	return &WordInfo{
+		Definition:   parsed.Definition,
+		Example:      parsed.Example,
+		Collocations: parsed.Collocations,
+		Construction: parsed.Construction,
+	}, nil
 }
 
 func defaultQuizOptions(definition, language string) []string {
