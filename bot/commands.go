@@ -278,6 +278,21 @@ func handleWordsList(c tele.Context, database *db.DB) error {
 	return c.Send(sb.String(), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
+func handleAddWord(c tele.Context, database *db.DB) error {
+	user, err := requireOnboarded(c, database)
+	if err != nil {
+		return nil
+	}
+
+	if warnActiveState(c, database, user) {
+		return nil
+	}
+
+	m := userMessages(user)
+	database.SetState(user.ID, "waiting_addword", map[string]string{})
+	return c.Send(m.AddWordPrompt)
+}
+
 func handlePollAnswer(c tele.Context, database *db.DB) error {
 	answer := c.PollAnswer()
 	if answer == nil {

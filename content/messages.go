@@ -135,6 +135,13 @@ type Messages struct {
 	LabelScheduleMedia   string
 	LabelScheduleReview  string
 
+	// Add word
+	AddWordPrompt    string
+	AddWordSearching string
+	AddWordNotFound  string
+	AddWordAdded     func(word, def string) string
+	AddWordExists    func(word string) string
+
 	// Quiz poll
 	QuizPollQuestion func(word string) string
 	TryUseWord       func(word string) string
@@ -295,6 +302,12 @@ var MessagesEN = Messages{
 	LabelScheduleMedia:   "\U0001F3AC Media",
 	LabelScheduleReview:  "\U0001F31B Review",
 
+	AddWordPrompt:    "Type the English word you want to add:",
+	AddWordSearching: "\U0001F50D Looking up the word...",
+	AddWordNotFound:  "\u274C Word not found. Check the spelling and try again.",
+	AddWordAdded:     func(word, def string) string { return fmt.Sprintf("\u2705 Added: *%s* — %s\n\nIt's now in your learning queue!", word, def) },
+	AddWordExists:    func(word string) string { return fmt.Sprintf("You already have *%s* in your list!", word) },
+
 	QuizPollQuestion: func(word string) string { return fmt.Sprintf("What does \"%s\" mean?", word) },
 	TryUseWord:       func(word string) string { return fmt.Sprintf("Try using the word *%s* in your sentence!", word) },
 }
@@ -454,6 +467,12 @@ var MessagesRU = Messages{
 	LabelScheduleMedia:   "\U0001F3AC Медиа",
 	LabelScheduleReview:  "\U0001F31B Обзор",
 
+	AddWordPrompt:    "Напиши английское слово которое хочешь добавить:",
+	AddWordSearching: "\U0001F50D Ищу слово...",
+	AddWordNotFound:  "\u274C Слово не найдено. Проверь правописание и попробуй ещё раз.",
+	AddWordAdded:     func(word, def string) string { return fmt.Sprintf("\u2705 Добавлено: *%s* — %s\n\nСлово теперь в твоей очереди на изучение!", word, def) },
+	AddWordExists:    func(word string) string { return fmt.Sprintf("У тебя уже есть *%s* в списке!", word) },
+
 	QuizPollQuestion: func(word string) string { return fmt.Sprintf("Что означает \"%s\"?", word) },
 	TryUseWord:       func(word string) string { return fmt.Sprintf("Попробуй использовать слово *%s* в предложении!", word) },
 }
@@ -612,6 +631,12 @@ var MessagesKK = Messages{
 	LabelScheduleWriting: "\u270D\uFE0F Жазу",
 	LabelScheduleMedia:   "\U0001F3AC Медиа",
 	LabelScheduleReview:  "\U0001F31B Қорытынды",
+
+	AddWordPrompt:    "Қосқың келетін ағылшын сөзін жаз:",
+	AddWordSearching: "\U0001F50D Сөзді іздеп жатырмын...",
+	AddWordNotFound:  "\u274C Сөз табылмады. Емлені тексеріп, қайта байқап көр.",
+	AddWordAdded:     func(word, def string) string { return fmt.Sprintf("\u2705 Қосылды: *%s* — %s\n\nСөз енді оқу кезегінде!", word, def) },
+	AddWordExists:    func(word string) string { return fmt.Sprintf("Сенде *%s* тізімде бар!", word) },
 
 	QuizPollQuestion: func(word string) string { return fmt.Sprintf("\"%s\" не дегенді білдіреді?", word) },
 	TryUseWord:       func(word string) string { return fmt.Sprintf("*%s* сөзін сөйлемде қолдануға тырыс!", word) },

@@ -229,6 +229,84 @@ func (o *OpenAIClient) SpeechToText(filePath string) (string, error) {
 	return strings.TrimSpace(resp.Text), nil
 }
 
+// WordInfo holds AI-generated info for a custom word.
+type WordInfo struct {
+	Definition   string
+	Example      string
+	Collocations string
+	Construction string
+}
+
+func (o *OpenAIClient) LookupWord(word, userLanguage string) (*WordInfo, error) {
+	if o == nil {
+		return nil, fmt.Errorf("OpenAI client not configured")
+	}
+
+	uiLang := uiLangName(userLanguage)
+
+	prompt := fmt.Sprintf(`You are an English language dictionary. The user speaks %s.
+For the English word/phrase: "%s"
+
+Return EXACTLY this JSON format, no extra text:
+{
+  "definition": "short translation/definition in %s (1-3 words)",
+  "example": "one natural example sentence in English using this word",
+  "collocations": "3-4 common collocations, comma separated",
+  "construction": "grammar pattern, e.g. 'verb + noun' or 'adjective + about'"
+}
+
+If the word doesn't exist or is not English, return:
+{"error": "not found"}`, uiLang, word, uiLang)
+
+	text, err := o.complete(prompt)
+	if err != nil {
+		return nil, err
+	}
+
+	text = strings.TrimSpace(text)
+	// Remove markdown code fences if present
+	text = strings.TrimPrefix(text, "```json")
+	text = strings.TrimPrefix(text, "```")
+	text = strings.TrimSuffix(text, "```")
+	text = strings.TrimSpace(text)
+
+	if strings.Contains(text, `"error"`) {
+		return nil, fmt.Errorf("word not found")
+	}
+
+	// Simple JSON parsing without encoding/json import
+	get := func(key string) string {
+		idx := strings.Index(text, `"`+key+`"`)
+		if idx < 0 {
+			return ""
+		}
+		rest := text[idx+len(key)+3:]
+		start := strings.Index(rest, `"`)
+		if start < 0 {
+			return ""
+		}
+		rest = rest[start+1:]
+		end := strings.Index(rest, `"`)
+		if end < 0 {
+			return ""
+		}
+		return rest[:end]
+	}
+
+	info := &WordInfo{
+		Definition:   get("definition"),
+		Example:      get("example"),
+		Collocations: get("collocations"),
+		Construction: get("construction"),
+	}
+
+	if info.Definition == "" {
+		return nil, fmt.Errorf("could not parse word info")
+	}
+
+	return info, nil
+}
+
 func defaultQuizOptions(definition, language string) []string {
 	defaults := []string{
 		"увеличить", "радоваться", "бежать быстро",

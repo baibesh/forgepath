@@ -39,7 +39,8 @@ export function SettingsForm({ initial }: { initial: SettingsData }) {
         <label className="text-sm text-text-muted block mb-1.5">Language</label>
         <select value={language} onChange={(e) => setLanguage(e.target.value)} className={selectClass}>
           <option value="en">English</option>
-          <option value="de">Deutsch</option>
+          <option value="ru">Русский</option>
+          <option value="kk">Қазақша</option>
         </select>
       </div>
 

@@ -5,7 +5,7 @@ import { useAuthFetch } from "@/hooks/useAuth";
 import { useTelegramAuth } from "@/providers/TelegramProvider";
 import { PageTransition } from "@/components/layout/PageTransition";
 import { WordList } from "@/components/words/WordList";
-import { Search } from "lucide-react";
+import { Search, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Filter = "all" | "due" | "learned";
@@ -30,6 +30,12 @@ export default function WordsPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
+
+  // Add word state
+  const [showAdd, setShowAdd] = useState(false);
+  const [addInput, setAddInput] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [addResult, setAddResult] = useState<{ type: "success" | "error" | "exists"; message: string } | null>(null);
 
   const fetchWords = useCallback(async () => {
     if (!token) return;
@@ -58,6 +64,41 @@ export default function WordsPage() {
     setPage(1);
   }, [filter, search]);
 
+  const handleAddWord = async () => {
+    const word = addInput.trim().toLowerCase();
+    if (!word || adding) return;
+
+    setAdding(true);
+    setAddResult(null);
+
+    try {
+      const res = await authFetch("/api/words", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ word }),
+      });
+
+      const data = await res.json();
+
+      if (data.exists) {
+        setAddResult({ type: "exists", message: `"${data.word.word}" is already in your list` });
+      } else if (data.added) {
+        setAddResult({
+          type: "success",
+          message: `Added: ${data.word.word} — ${data.word.definition}`,
+        });
+        setAddInput("");
+        fetchWords();
+      } else {
+        setAddResult({ type: "error", message: data.error || "Word not found" });
+      }
+    } catch {
+      setAddResult({ type: "error", message: "Something went wrong" });
+    }
+
+    setAdding(false);
+  };
+
   const filters: { label: string; value: Filter }[] = [
     { label: "All", value: "all" },
     { label: "Due", value: "due" },
@@ -67,7 +108,61 @@ export default function WordsPage() {
   return (
     <PageTransition>
       <div className="space-y-4">
-        <h1 className="text-xl font-semibold">My Words</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold">My Words</h1>
+          <button
+            onClick={() => {
+              setShowAdd(!showAdd);
+              setAddResult(null);
+              setAddInput("");
+            }}
+            className={cn(
+              "flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm transition-colors",
+              showAdd ? "bg-red/10 text-red" : "bg-accent text-white"
+            )}
+          >
+            {showAdd ? <X size={14} /> : <Plus size={14} />}
+            {showAdd ? "Close" : "Add word"}
+          </button>
+        </div>
+
+        {showAdd && (
+          <div className="bg-surface rounded-xl p-4 space-y-3">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Type an English word..."
+                value={addInput}
+                onChange={(e) => {
+                  setAddInput(e.target.value);
+                  setAddResult(null);
+                }}
+                onKeyDown={(e) => e.key === "Enter" && handleAddWord()}
+                className="flex-1 bg-surface-2 rounded-lg px-3 py-2.5 text-sm text-text placeholder:text-text-muted outline-none focus:ring-1 focus:ring-accent"
+                autoFocus
+              />
+              <button
+                onClick={handleAddWord}
+                disabled={adding || !addInput.trim()}
+                className="px-4 py-2.5 bg-accent text-white rounded-lg text-sm font-medium disabled:opacity-50 transition-opacity"
+              >
+                {adding ? "..." : "Add"}
+              </button>
+            </div>
+            {addResult && (
+              <p
+                className={cn(
+                  "text-sm",
+                  addResult.type === "success" && "text-green",
+                  addResult.type === "error" && "text-red",
+                  addResult.type === "exists" && "text-yellow"
+                )}
+              >
+                {addResult.message}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />

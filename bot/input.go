@@ -149,6 +149,8 @@ func processTextInput(c tele.Context, database *db.DB, openaiClient *ai.OpenAICl
 		return processQuizSentence(c, database, openaiClient, state, text)
 	case "waiting_media_task":
 		return processMediaTask(c, database, openaiClient, state, text)
+	case "waiting_addword":
+		return processAddWord(c, database, openaiClient, text)
 	default:
 		return nil
 	}
@@ -376,4 +378,55 @@ func processMediaTask(c tele.Context, database *db.DB, openaiClient *ai.OpenAICl
 	}
 
 	return c.Send(feedback, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+}
+
+func processAddWord(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient, text string) error {
+	userID := c.Sender().ID
+	user, _ := database.GetUser(userID)
+	m := userMessages(user)
+	lang := userLang(user)
+
+	word := strings.TrimSpace(strings.ToLower(text))
+	if word == "" || len(word) > 100 {
+		return c.Send(m.AddWordNotFound)
+	}
+
+	database.ClearState(userID)
+
+	// Check if user already has this word
+	existing, _ := database.GetWordByText(word, "en")
+	if existing != nil {
+		reps, _ := database.GetUserWordRepetitions(userID, existing.ID)
+		if reps > 0 {
+			return c.Send(m.AddWordExists(escapeMarkdown(existing.Word)),
+				&tele.SendOptions{ParseMode: tele.ModeMarkdown})
+		}
+		database.MarkWordSeen(userID, existing.ID)
+		return c.Send(m.AddWordAdded(escapeMarkdown(existing.Word), escapeMarkdown(existing.Definition)),
+			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	}
+
+	c.Send(m.AddWordSearching)
+
+	info, err := openaiClient.LookupWord(word, lang)
+	if err != nil {
+		log.Printf("[user=%d] addword lookup error: %v", userID, err)
+		return c.Send(m.AddWordNotFound)
+	}
+
+	level := "A2"
+	if user != nil {
+		level = user.Level
+	}
+
+	wordID, err := database.InsertCustomWord(word, info.Definition, info.Example, info.Collocations, info.Construction, level, "en")
+	if err != nil {
+		log.Printf("[user=%d] addword insert error: %v", userID, err)
+		return c.Send(m.SomethingWrong)
+	}
+
+	database.MarkWordSeen(userID, wordID)
+
+	return c.Send(m.AddWordAdded(escapeMarkdown(word), escapeMarkdown(info.Definition)),
+		&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }

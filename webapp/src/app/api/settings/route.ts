@@ -30,7 +30,7 @@ export async function PUT(req: Request) {
   const { language, level, tzOffset } = body;
 
   const data: Record<string, unknown> = {};
-  if (language && ["en", "de"].includes(language)) data.language = language;
+  if (language && ["en", "ru", "kk"].includes(language)) data.language = language;
   if (level && ["A1", "A2", "B1", "B2", "C1"].includes(level)) data.level = level;
   if (tzOffset !== undefined && typeof tzOffset === "number" && tzOffset >= -12 && tzOffset <= 14) {
     data.tz_offset = tzOffset;

@@ -146,6 +146,33 @@ func (d *DB) GetUserWordSRS(userID int64, wordID int) (repetitions int, interval
 	return
 }
 
+func (d *DB) InsertCustomWord(word, definition, example, collocations, construction, level, language string) (int, error) {
+	var id int
+	err := d.Pool.QueryRow(context.Background(),
+		`INSERT INTO words (word, definition, example, collocations, construction, level, language)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 ON CONFLICT (word, language) DO UPDATE SET
+		   definition = EXCLUDED.definition, example = EXCLUDED.example,
+		   collocations = EXCLUDED.collocations, construction = EXCLUDED.construction
+		 RETURNING id`,
+		word, definition, example, collocations, construction, level, language,
+	).Scan(&id)
+	return id, err
+}
+
+func (d *DB) GetWordByText(word, language string) (*Word, error) {
+	var w Word
+	err := d.Pool.QueryRow(context.Background(),
+		`SELECT id, word, COALESCE(definition,''), COALESCE(example,''), COALESCE(collocations,''),
+		        COALESCE(construction,''), COALESCE(level,'A2'), COALESCE(language,'en')
+		 FROM words WHERE LOWER(word) = LOWER($1) AND COALESCE(language,'en') = $2`, word, language,
+	).Scan(&w.ID, &w.Word, &w.Definition, &w.Example, &w.Collocations, &w.Construction, &w.Level, &w.Language)
+	if err != nil {
+		return nil, err
+	}
+	return &w, nil
+}
+
 func (d *DB) GetRandomWordsExcluding(wordID int, level string, limit int) ([]Word, error) {
 	rows, err := d.Pool.Query(context.Background(),
 		`SELECT id, word, COALESCE(definition,''), COALESCE(example,''),

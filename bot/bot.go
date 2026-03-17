@@ -22,6 +22,7 @@ func SetBotCommands(b *tele.Bot) {
 		{Text: "stats", Description: "Your progress"},
 		{Text: "words", Description: "Words you've learned"},
 		{Text: "skip", Description: "Take a day off"},
+		{Text: "addword", Description: "Add a custom word"},
 		{Text: "cancel", Description: "Stop current task"},
 		{Text: "settings", Description: "Change settings"},
 		{Text: "help", Description: "How this works"},
@@ -88,6 +89,8 @@ func RegisterHandlers(b *tele.Bot, database *db.DB, cfg *config.Config) {
 	b.Handle("/stats", func(c tele.Context) error { return handleStats(c, database) })
 	b.Handle("/skip", func(c tele.Context) error { return handleSkip(c, database) })
 	b.Handle("/words", func(c tele.Context) error { return handleWordsList(c, database) })
+
+	b.Handle("/addword", func(c tele.Context) error { return handleAddWord(c, database) })
 
 	b.Handle("/cancel", func(c tele.Context) error {
 		userID := c.Sender().ID
