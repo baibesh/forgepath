@@ -467,7 +467,7 @@ func handleWrite(c tele.Context, database *db.DB) error {
 	grammar, _ := database.GetCurrentGrammarFocus(user.ID)
 	grammar = GrammarOrDefault(grammar, user.Language)
 
-	topic := content.RandomTopic(user.Language)
+	topic := content.RandomTopic("en") // topics should always be in the target language (English)
 
 	database.SetState(user.ID, "waiting_writing", map[string]string{
 		"topic":         topic,

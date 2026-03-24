@@ -186,7 +186,7 @@ func (j *Jobs) sendWritingPrompt(user db.User) {
 	grammar, _ := j.db.GetCurrentGrammarFocus(user.ID)
 	grammar = bot.GrammarOrDefault(grammar, user.Language)
 
-	topic := content.RandomTopic(user.Language)
+	topic := content.RandomTopic("en") // topics should always be in the target language (English)
 
 	j.db.SetState(user.ID, "waiting_writing", map[string]string{
 		"topic":         topic,
