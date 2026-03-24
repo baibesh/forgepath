@@ -19,19 +19,22 @@ func (d *DB) GetUser(id int64) (*User, error) {
 		`SELECT id, username, COALESCE(first_name, ''), tz_offset, level,
 		        COALESCE(language, 'en'), active, COALESCE(onboarded, false),
 		        COALESCE(skip_count, 0), COALESCE(current_grammar_week, 1),
+		        COALESCE(words_per_day, 3),
 		        COALESCE(word_hour, 7), COALESCE(word_min, 30),
 		        COALESCE(writing_hour, 12), COALESCE(writing_min, 0),
 		        COALESCE(media_hour, 18), COALESCE(media_min, 0),
 		        COALESCE(review_hour, 21), COALESCE(review_min, 30),
+		        COALESCE(review_session_hour, 14), COALESCE(review_session_min, 0),
 		        created_at
 		 FROM users WHERE id = $1`, id,
 	).Scan(&u.ID, &u.Username, &u.FirstName, &u.TzOffset, &u.Level,
 		&u.Language, &u.Active, &u.Onboarded,
-		&u.SkipCount, &u.CurrentGrammarWeek,
+		&u.SkipCount, &u.CurrentGrammarWeek, &u.WordsPerDay,
 		&u.Schedule.WordHour, &u.Schedule.WordMin,
 		&u.Schedule.WritingHour, &u.Schedule.WritingMin,
 		&u.Schedule.MediaHour, &u.Schedule.MediaMin,
 		&u.Schedule.ReviewHour, &u.Schedule.ReviewMin,
+		&u.Schedule.ReviewSessionHour, &u.Schedule.ReviewSessionMin,
 		&u.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -44,10 +47,12 @@ func (d *DB) GetActiveUsers() ([]User, error) {
 		`SELECT id, username, COALESCE(first_name, ''), tz_offset, level,
 		        COALESCE(language, 'en'), active, COALESCE(onboarded, false),
 		        COALESCE(skip_count, 0), COALESCE(current_grammar_week, 1),
+		        COALESCE(words_per_day, 3),
 		        COALESCE(word_hour, 7), COALESCE(word_min, 30),
 		        COALESCE(writing_hour, 12), COALESCE(writing_min, 0),
 		        COALESCE(media_hour, 18), COALESCE(media_min, 0),
 		        COALESCE(review_hour, 21), COALESCE(review_min, 30),
+		        COALESCE(review_session_hour, 14), COALESCE(review_session_min, 0),
 		        created_at
 		 FROM users WHERE active = true AND COALESCE(onboarded, false) = true`,
 	)
@@ -61,11 +66,12 @@ func (d *DB) GetActiveUsers() ([]User, error) {
 		var u User
 		if err := rows.Scan(&u.ID, &u.Username, &u.FirstName, &u.TzOffset, &u.Level,
 			&u.Language, &u.Active, &u.Onboarded,
-			&u.SkipCount, &u.CurrentGrammarWeek,
+			&u.SkipCount, &u.CurrentGrammarWeek, &u.WordsPerDay,
 			&u.Schedule.WordHour, &u.Schedule.WordMin,
 			&u.Schedule.WritingHour, &u.Schedule.WritingMin,
 			&u.Schedule.MediaHour, &u.Schedule.MediaMin,
 			&u.Schedule.ReviewHour, &u.Schedule.ReviewMin,
+			&u.Schedule.ReviewSessionHour, &u.Schedule.ReviewSessionMin,
 			&u.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -107,6 +113,12 @@ func (d *DB) ResetWeeklySkips(userID int64) error {
 func (d *DB) SetOnboarded(userID int64) error {
 	_, err := d.Pool.Exec(context.Background(),
 		`UPDATE users SET onboarded = TRUE WHERE id = $1`, userID)
+	return err
+}
+
+func (d *DB) UpdateWordsPerDay(userID int64, count int) error {
+	_, err := d.Pool.Exec(context.Background(),
+		`UPDATE users SET words_per_day = $2 WHERE id = $1`, userID, count)
 	return err
 }
 

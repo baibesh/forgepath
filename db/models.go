@@ -3,14 +3,16 @@ package db
 import "time"
 
 type UserSchedule struct {
-	WordHour    int
-	WordMin     int
-	WritingHour int
-	WritingMin  int
-	MediaHour   int
-	MediaMin    int
-	ReviewHour  int
-	ReviewMin   int
+	WordHour         int
+	WordMin          int
+	WritingHour      int
+	WritingMin       int
+	MediaHour        int
+	MediaMin         int
+	ReviewHour       int
+	ReviewMin        int
+	ReviewSessionHour int
+	ReviewSessionMin  int
 }
 
 type User struct {
@@ -24,6 +26,7 @@ type User struct {
 	Onboarded          bool
 	SkipCount          int
 	CurrentGrammarWeek int
+	WordsPerDay        int
 	Schedule           UserSchedule
 	CreatedAt          time.Time
 }
@@ -35,6 +38,9 @@ type Word struct {
 	Example      string
 	Collocations string
 	Construction string
+	Synonyms     string
+	Antonyms     string
+	Examples     string
 	Level        string
 	Language     string
 }

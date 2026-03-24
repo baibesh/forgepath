@@ -15,11 +15,26 @@ func FormatWordOfDay(word *db.Word, grammar *db.GrammarWeek, lang string) string
 	sb.WriteString(fmt.Sprintf("*%s* — %s\n\n", escapeMarkdown(word.Word), escapeMarkdown(word.Definition)))
 	sb.WriteString(fmt.Sprintf("\U0001F4AC _%s_\n", escapeMarkdown(word.Example)))
 
+	if word.Examples != "" {
+		for _, ex := range strings.Split(word.Examples, "|") {
+			ex = strings.TrimSpace(ex)
+			if ex != "" {
+				sb.WriteString(fmt.Sprintf("\U0001F4AC _%s_\n", escapeMarkdown(ex)))
+			}
+		}
+	}
+
 	if word.Construction != "" {
 		sb.WriteString(fmt.Sprintf("\n%s: %s", m.LabelHowToUse, escapeMarkdown(word.Construction)))
 	}
 	if word.Collocations != "" {
 		sb.WriteString(fmt.Sprintf("\n%s: %s", m.LabelGoesWith, escapeMarkdown(word.Collocations)))
+	}
+	if word.Synonyms != "" {
+		sb.WriteString(fmt.Sprintf("\n%s: %s", m.LabelSynonyms, escapeMarkdown(word.Synonyms)))
+	}
+	if word.Antonyms != "" {
+		sb.WriteString(fmt.Sprintf("\n%s: %s", m.LabelAntonyms, escapeMarkdown(word.Antonyms)))
 	}
 
 	if grammar != nil {
@@ -184,9 +199,11 @@ func FormatSchedule(s db.UserSchedule, lang string) string {
 		"%s — *%02d:%02d*\n"+
 			"%s — *%02d:%02d*\n"+
 			"%s — *%02d:%02d*\n"+
+			"%s — *%02d:%02d*\n"+
 			"%s — *%02d:%02d*",
 		m.LabelScheduleWord, s.WordHour, s.WordMin,
 		m.LabelScheduleWriting, s.WritingHour, s.WritingMin,
+		m.LabelScheduleReviewSession, s.ReviewSessionHour, s.ReviewSessionMin,
 		m.LabelScheduleMedia, s.MediaHour, s.MediaMin,
 		m.LabelScheduleReview, s.ReviewHour, s.ReviewMin,
 	)

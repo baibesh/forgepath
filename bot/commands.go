@@ -14,6 +14,26 @@ import (
 	"github.com/baibesh/forgepath/srs"
 )
 
+// PickQuizType selects a quiz format based on repetition count with some randomness.
+func PickQuizType(reps int) string {
+	switch {
+	case reps >= 4:
+		return "sentence"
+	case reps == 3:
+		choices := []string{"typing", "sentence"}
+		return choices[rand.Intn(len(choices))]
+	case reps == 2:
+		choices := []string{"definition", "cloze", "reverse", "collocation"}
+		return choices[rand.Intn(len(choices))]
+	case reps == 1:
+		choices := []string{"definition", "cloze", "reverse", "truefalse"}
+		return choices[rand.Intn(len(choices))]
+	default: // reps == 0
+		choices := []string{"definition", "cloze", "truefalse"}
+		return choices[rand.Intn(len(choices))]
+	}
+}
+
 func requireOnboarded(c tele.Context, database *db.DB) (*db.User, error) {
 	user, err := database.GetUser(c.Sender().ID)
 	if err != nil {
@@ -77,24 +97,47 @@ func handleWord(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 
 	m := userMessages(user)
 	lang := userLang(user)
-	word, err := database.GetRandomUnseen(user.ID, user.Level, user.Language)
-	if err != nil {
-		return c.Send(m.AllWordsLearned)
+
+	count := user.WordsPerDay
+	if count <= 0 {
+		count = 3
 	}
 
 	grammar, _ := database.GetCurrentGrammarFocus(user.ID)
-	database.MarkWordSeen(user.ID, word.ID)
-	database.MarkWordDone(user.ID, user.TzOffset)
+	sentCount := 0
 
-	if err := c.Send(FormatWordOfDay(word, grammar, lang), &tele.SendOptions{
-		ParseMode:   tele.ModeMarkdown,
-		ReplyMarkup: ListenKeyboard(word.ID, lang),
-	}); err != nil {
-		log.Printf("[user=%d] send word error: %v", user.ID, err)
-		return err
+	var lastWord *db.Word
+	for i := 0; i < count; i++ {
+		word, err := database.GetRandomUnseen(user.ID, user.Level, user.Language)
+		if err != nil {
+			if i == 0 {
+				return c.Send(m.AllWordsLearned)
+			}
+			break
+		}
+
+		database.MarkWordSeen(user.ID, word.ID)
+
+		if err := c.Send(FormatWordOfDay(word, grammar, lang), &tele.SendOptions{
+			ParseMode:   tele.ModeMarkdown,
+			ReplyMarkup: ListenKeyboard(word.ID, lang),
+		}); err != nil {
+			log.Printf("[user=%d] send word error: %v", user.ID, err)
+		}
+
+		lastWord = word
+		sentCount++
 	}
 
-	return sendQuizForWord(c, database, word, openaiClient)
+	if sentCount > 0 {
+		database.MarkWordDone(user.ID, user.TzOffset)
+	}
+
+	// Send quiz for the last word
+	if lastWord != nil {
+		return sendQuizForWord(c, database, lastWord, openaiClient)
+	}
+	return nil
 }
 
 func sendQuizForWord(c tele.Context, database *db.DB, word *db.Word, openaiClient *ai.OpenAIClient) error {
@@ -102,23 +145,59 @@ func sendQuizForWord(c tele.Context, database *db.DB, word *db.Word, openaiClien
 	lang := userLang(user)
 	reps, _ := database.GetUserWordRepetitions(c.Sender().ID, word.ID)
 
-	if reps >= 4 {
-		database.SetState(c.Sender().ID, "waiting_quiz_sentence", map[string]string{
+	quizType := PickQuizType(reps)
+	return DispatchQuiz(c.Bot(), c.Recipient(), c.Sender().ID, database, word, openaiClient, lang, quizType)
+}
+
+// DispatchQuiz sends the appropriate quiz type, falling back to definition poll on error.
+func DispatchQuiz(b *tele.Bot, recipient tele.Recipient, userID int64, database *db.DB, word *db.Word, openaiClient *ai.OpenAIClient, lang, quizType string) error {
+	switch quizType {
+	case "sentence":
+		database.SetState(userID, "waiting_quiz_sentence", map[string]string{
 			"word_id": fmt.Sprintf("%d", word.ID),
 			"word":    word.Word,
 		})
-		return c.Send(FormatQuizMakeSentence(word, lang), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
-	}
+		_, err := b.Send(recipient, FormatQuizMakeSentence(word, lang), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+		return err
 
-	if reps >= 3 {
-		database.SetState(c.Sender().ID, "waiting_quiz_typing", map[string]string{
+	case "typing":
+		database.SetState(userID, "waiting_quiz_typing", map[string]string{
 			"word_id": fmt.Sprintf("%d", word.ID),
 			"answer":  strings.ToLower(word.Word),
 		})
-		return c.Send(FormatQuizTypeWord(word, lang), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
-	}
+		_, err := b.Send(recipient, FormatQuizTypeWord(word, lang), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+		return err
 
-	return SendQuizPoll(c.Bot(), c.Recipient(), c.Sender().ID, word, openaiClient, userLang(user))
+	case "cloze":
+		if err := SendClozeQuizPoll(b, recipient, userID, word, openaiClient, lang); err != nil {
+			log.Printf("[user=%d] cloze quiz failed, fallback to definition: %v", userID, err)
+			return SendQuizPoll(b, recipient, userID, word, openaiClient, lang)
+		}
+		return nil
+
+	case "reverse":
+		if err := SendReverseQuizPoll(b, recipient, userID, word, openaiClient, lang); err != nil {
+			log.Printf("[user=%d] reverse quiz failed, fallback to definition: %v", userID, err)
+			return SendQuizPoll(b, recipient, userID, word, openaiClient, lang)
+		}
+		return nil
+
+	case "collocation":
+		if word.Collocations == "" {
+			return SendQuizPoll(b, recipient, userID, word, openaiClient, lang)
+		}
+		if err := SendCollocationQuizPoll(b, recipient, userID, word, openaiClient, lang); err != nil {
+			log.Printf("[user=%d] collocation quiz failed, fallback to definition: %v", userID, err)
+			return SendQuizPoll(b, recipient, userID, word, openaiClient, lang)
+		}
+		return nil
+
+	case "truefalse":
+		return SendTrueFalseQuiz(b, recipient, userID, word, database, lang)
+
+	default:
+		return SendQuizPoll(b, recipient, userID, word, openaiClient, lang)
+	}
 }
 
 func SendQuizPoll(b *tele.Bot, recipient tele.Recipient, userID int64, word *db.Word, openaiClient *ai.OpenAIClient, lang string) error {
@@ -159,6 +238,179 @@ func SendQuizPoll(b *tele.Bot, recipient tele.Recipient, userID int64, word *db.
 	return nil
 }
 
+// SendClozeQuizPoll sends a fill-in-the-blank quiz using Telegram PollQuiz.
+func SendClozeQuizPoll(b *tele.Bot, recipient tele.Recipient, userID int64, word *db.Word, openaiClient *ai.OpenAIClient, lang string) error {
+	m := content.GetMessages(lang)
+	sentence, wrongWords, err := openaiClient.GenerateClozeOptions(word.Word, word.Definition, word.Language)
+	if err != nil {
+		return err
+	}
+
+	options := []string{word.Word}
+	options = append(options, wrongWords...)
+
+	rand.Shuffle(len(options), func(i, j int) {
+		options[i], options[j] = options[j], options[i]
+	})
+
+	var correctIdx int
+	for i, opt := range options {
+		if opt == word.Word {
+			correctIdx = i
+			break
+		}
+	}
+
+	poll := &tele.Poll{
+		Type:          tele.PollQuiz,
+		Question:      m.QuizClozeQuestion(sentence),
+		CorrectOption: correctIdx,
+		Anonymous:     false,
+		Explanation:   fmt.Sprintf("%s — %s", word.Word, word.Definition),
+	}
+	poll.AddOptions(options...)
+
+	msg, err := poll.Send(b, recipient, nil)
+	if err != nil {
+		return err
+	}
+	if msg != nil && msg.Poll != nil {
+		RegisterQuizPoll(msg.Poll.ID, userID, word.ID, correctIdx)
+	}
+	return nil
+}
+
+// SendReverseQuizPoll shows definition and asks to pick the correct word.
+func SendReverseQuizPoll(b *tele.Bot, recipient tele.Recipient, userID int64, word *db.Word, openaiClient *ai.OpenAIClient, lang string) error {
+	m := content.GetMessages(lang)
+
+	// Generate 3 wrong word options (similar-level words, not definitions)
+	wrongWords, err := openaiClient.GenerateQuizOptions(word.Word, word.Word, word.Language, 3)
+	if err != nil {
+		return err
+	}
+
+	options := []string{word.Word}
+	options = append(options, wrongWords[:3]...)
+
+	rand.Shuffle(len(options), func(i, j int) {
+		options[i], options[j] = options[j], options[i]
+	})
+
+	var correctIdx int
+	for i, opt := range options {
+		if opt == word.Word {
+			correctIdx = i
+			break
+		}
+	}
+
+	poll := &tele.Poll{
+		Type:          tele.PollQuiz,
+		Question:      m.QuizReverseQuestion(word.Definition),
+		CorrectOption: correctIdx,
+		Anonymous:     false,
+		Explanation:   fmt.Sprintf("%s — %s", word.Word, word.Definition),
+	}
+	poll.AddOptions(options...)
+
+	msg, sendErr := poll.Send(b, recipient, nil)
+	if sendErr != nil {
+		return sendErr
+	}
+	if msg != nil && msg.Poll != nil {
+		RegisterQuizPoll(msg.Poll.ID, userID, word.ID, correctIdx)
+	}
+	return nil
+}
+
+// SendCollocationQuizPoll sends a collocation quiz using PollQuiz.
+func SendCollocationQuizPoll(b *tele.Bot, recipient tele.Recipient, userID int64, word *db.Word, openaiClient *ai.OpenAIClient, lang string) error {
+	m := content.GetMessages(lang)
+
+	_, options, _, err := openaiClient.GenerateCollocationQuiz(word.Word, word.Collocations, word.Language)
+	if err != nil {
+		return err
+	}
+
+	correctAnswer := options[0] // first is always correct from GenerateCollocationQuiz
+
+	rand.Shuffle(len(options), func(i, j int) {
+		options[i], options[j] = options[j], options[i]
+	})
+
+	var correctIdx int
+	for i, opt := range options {
+		if opt == correctAnswer {
+			correctIdx = i
+			break
+		}
+	}
+
+	poll := &tele.Poll{
+		Type:          tele.PollQuiz,
+		Question:      m.QuizCollocationQuestion(word.Word),
+		CorrectOption: correctIdx,
+		Anonymous:     false,
+		Explanation:   fmt.Sprintf("%s: %s", word.Word, word.Collocations),
+	}
+	poll.AddOptions(options...)
+
+	msg, sendErr := poll.Send(b, recipient, nil)
+	if sendErr != nil {
+		return sendErr
+	}
+	if msg != nil && msg.Poll != nil {
+		RegisterQuizPoll(msg.Poll.ID, userID, word.ID, correctIdx)
+	}
+	return nil
+}
+
+// SendTrueFalseQuiz sends a True/False poll (regular, not quiz type).
+func SendTrueFalseQuiz(b *tele.Bot, recipient tele.Recipient, userID int64, word *db.Word, database *db.DB, lang string) error {
+	m := content.GetMessages(lang)
+
+	// 50% chance show correct definition, 50% show wrong one
+	showCorrect := rand.Intn(2) == 0
+	shownDef := word.Definition
+
+	if !showCorrect {
+		// Get a random word to use its definition as the wrong one
+		wrongWords, err := database.GetRandomWordsExcluding(word.ID, word.Level, 1)
+		if err == nil && len(wrongWords) > 0 {
+			shownDef = wrongWords[0].Definition
+		} else {
+			showCorrect = true
+			shownDef = word.Definition
+		}
+	}
+
+	var correctIdx int
+	if showCorrect {
+		correctIdx = 0 // True
+	} else {
+		correctIdx = 1 // False
+	}
+
+	poll := &tele.Poll{
+		Type:          tele.PollQuiz,
+		Question:      m.QuizTrueFalseQuestion(word.Word, shownDef),
+		CorrectOption: correctIdx,
+		Anonymous:     false,
+		Explanation:   fmt.Sprintf("%s — %s", word.Word, word.Definition),
+	}
+	poll.AddOptions(m.LabelTrue, m.LabelFalse)
+
+	msg, err := poll.Send(b, recipient, nil)
+	if err != nil {
+		return err
+	}
+	if msg != nil && msg.Poll != nil {
+		RegisterQuizPoll(msg.Poll.ID, userID, word.ID, correctIdx)
+	}
+	return nil
+}
+
 func handleQuiz(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) error {
 	user, err := requireOnboarded(c, database)
 	if err != nil {
@@ -171,26 +423,32 @@ func handleQuiz(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 
 	m := userMessages(user)
 	lang := userLang(user)
-	words, err := database.GetWordsForReview(user.ID, 3)
+	words, err := database.GetWordsForReview(user.ID, 5)
 	if err != nil || len(words) == 0 {
 		return c.Send(m.NothingToReview)
 	}
 
-	sentTypingQuiz := false
+	sentTextQuiz := false
 	for _, w := range words {
 		word := w
 		reps, _ := database.GetUserWordRepetitions(user.ID, word.ID)
-		if reps >= 3 && !sentTypingQuiz {
-			if err := sendQuizForWord(c, database, &word, openaiClient); err != nil {
-				log.Printf("[user=%d] quiz error word=%d: %v", user.ID, word.ID, err)
-			}
-			sentTypingQuiz = true
-			continue
+		quizType := PickQuizType(reps)
+
+		// Only one text-input quiz per session (typing or sentence)
+		if (quizType == "typing" || quizType == "sentence") && sentTextQuiz {
+			quizType = "definition"
 		}
-		if reps < 3 {
-			if err := SendQuizPoll(c.Bot(), c.Recipient(), user.ID, &word, openaiClient, lang); err != nil {
-				log.Printf("[user=%d] quiz error word=%d: %v", user.ID, word.ID, err)
-			}
+
+		if quizType == "typing" || quizType == "sentence" {
+			sentTextQuiz = true
+		}
+
+		if err := DispatchQuiz(c.Bot(), c.Recipient(), c.Sender().ID, database, &word, openaiClient, lang, quizType); err != nil {
+			log.Printf("[user=%d] quiz error word=%d type=%s: %v", user.ID, word.ID, quizType, err)
+		}
+
+		if sentTextQuiz && (quizType == "typing" || quizType == "sentence") {
+			break // text quiz needs user response, stop sending more
 		}
 	}
 	return nil

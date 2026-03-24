@@ -93,6 +93,22 @@ func SettingsKeyboard(lang string) *tele.ReplyMarkup {
 			menu.Data(m.BtnLanguage, "settings", "language"),
 			menu.Data(m.BtnSchedule, "settings", "schedule"),
 		),
+		menu.Row(
+			menu.Data(m.BtnWordsPerDay, "settings", "wordsperday"),
+		),
+	)
+	return menu
+}
+
+func WordsPerDayKeyboard() *tele.ReplyMarkup {
+	menu := &tele.ReplyMarkup{}
+	menu.Inline(
+		menu.Row(
+			menu.Data("1", "setwpd", "1"),
+			menu.Data("3", "setwpd", "3"),
+			menu.Data("5", "setwpd", "5"),
+			menu.Data("7", "setwpd", "7"),
+		),
 	)
 	return menu
 }

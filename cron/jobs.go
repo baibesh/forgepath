@@ -57,18 +57,26 @@ func (j *Jobs) DispatchTasks() {
 
 			s := user.Schedule
 
-			switch {
-			case inWindow(s.WordHour, s.WordMin):
-				j.safeSend(user, j.sendWordOfDay)
-			case inWindow(s.WritingHour, s.WritingMin):
+			// Use if instead of switch so multiple tasks can fire in the same cycle
+			if inWindow(s.WordHour, s.WordMin) {
+				j.safeSend(user, j.sendWordsOfDay)
+			}
+			if inWindow(s.WritingHour, s.WritingMin) {
 				j.safeSend(user, j.sendWritingPrompt)
-			case inWindow(s.MediaHour, s.MediaMin):
+			}
+			if inWindow(s.MediaHour, s.MediaMin) {
 				j.safeSend(user, j.sendMediaRecommendation)
-			case inWindow(s.ReviewHour, s.ReviewMin):
+			}
+			if inWindow(s.ReviewSessionHour, s.ReviewSessionMin) {
+				j.safeSend(user, j.sendReviewSession)
+			}
+			if inWindow(s.ReviewHour, s.ReviewMin) {
 				j.safeSend(user, j.sendDailyReview)
 			}
 
-			if now.Weekday() == time.Sunday && inWindow(9, 0) {
+			// Use local weekday instead of UTC weekday
+			localDay := now.Add(time.Duration(user.TzOffset) * time.Hour).Weekday()
+			if localDay == time.Sunday && inWindow(9, 0) {
 				j.safeSend(user, j.sendWeeklyReport)
 			}
 		}()
@@ -96,28 +104,76 @@ func (j *Jobs) checkStateTimeout(userID int64) {
 	}
 }
 
-func (j *Jobs) sendWordOfDay(user db.User) {
+func (j *Jobs) sendWordsOfDay(user db.User) {
 	streak, _ := j.db.GetTodayStreak(user.ID, user.TzOffset)
 	if streak.WordDone {
 		return
 	}
 
-	word, err := j.db.GetRandomUnseen(user.ID, user.Level, user.Language)
-	if err != nil {
-		log.Printf("[cron][user=%d] no unseen words: %v", user.ID, err)
-		return
+	count := user.WordsPerDay
+	if count <= 0 {
+		count = 3
 	}
 
 	grammar, _ := j.db.GetCurrentGrammarFocus(user.ID)
-	j.db.MarkWordSeen(user.ID, word.ID)
-	j.db.MarkWordDone(user.ID, user.TzOffset)
+	sentCount := 0
 
-	log.Printf("[cron][user=%d] word of day: %s", user.ID, word.Word)
-	j.sendMessage(user.ID, bot.FormatWordOfDay(word, grammar, user.Language))
+	for i := 0; i < count; i++ {
+		word, err := j.db.GetRandomUnseen(user.ID, user.Level, user.Language)
+		if err != nil {
+			if i == 0 {
+				log.Printf("[cron][user=%d] no unseen words: %v", user.ID, err)
+			}
+			break
+		}
 
-	reviewWords, _ := j.db.GetWordsForReview(user.ID, 2)
+		// Enrich word if missing synonyms/examples
+		if word.Synonyms == "" && word.Examples == "" && j.openai != nil {
+			synonyms, antonyms, examples, err := j.openai.EnrichWord(word.Word, word.Definition, user.Language)
+			if err == nil {
+				j.db.UpdateWordEnrichment(word.ID, synonyms, antonyms, examples)
+				word.Synonyms = synonyms
+				word.Antonyms = antonyms
+				word.Examples = examples
+			}
+		}
+
+		j.db.MarkWordSeen(user.ID, word.ID)
+		log.Printf("[cron][user=%d] word of day %d/%d: %s", user.ID, i+1, count, word.Word)
+		j.sendMessage(user.ID, bot.FormatWordOfDay(word, grammar, user.Language))
+		sentCount++
+	}
+
+	if sentCount > 0 {
+		j.db.MarkWordDone(user.ID, user.TzOffset)
+	}
+}
+
+func (j *Jobs) sendReviewSession(user db.User) {
+	reviewWords, _ := j.db.GetWordsForReview(user.ID, 10)
+	if len(reviewWords) == 0 {
+		return
+	}
+
+	log.Printf("[cron][user=%d] review session: %d words due", user.ID, len(reviewWords))
+
+	m := content.GetMessages(user.Language)
+	j.sendMessage(user.ID, m.LabelReviewTime)
+
 	for _, rw := range reviewWords {
-		j.sendQuizPoll(user, &rw)
+		word := rw
+		reps, _ := j.db.GetUserWordRepetitions(user.ID, word.ID)
+		quizType := bot.PickQuizType(reps)
+
+		// In cron context, skip text-input quizzes (typing/sentence) since there's no interactive session
+		if quizType == "typing" || quizType == "sentence" {
+			quizType = "definition"
+		}
+
+		recipient := &tele.User{ID: user.ID}
+		if err := bot.DispatchQuiz(j.bot, recipient, user.ID, j.db, &word, j.openai, user.Language, quizType); err != nil {
+			log.Printf("[cron][user=%d] review quiz error word=%d: %v", user.ID, word.ID, err)
+		}
 	}
 }
 

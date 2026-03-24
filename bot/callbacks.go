@@ -122,6 +122,9 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 				return c.Edit(m.BtnSchedule+":", &tele.SendOptions{ReplyMarkup: ScheduleKeyboard(webAppURL, lang)})
 			}
 			return c.Respond(&tele.CallbackResponse{Text: "Schedule settings not available"})
+		case "wordsperday":
+			return c.Edit(fmt.Sprintf("%s (%s: *%d*):", m.BtnWordsPerDay, m.LabelWordsPerDay, user.WordsPerDay),
+				&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: WordsPerDayKeyboard()})
 		}
 		return nil
 	})
@@ -181,6 +184,24 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		database.UpdateUserTimezone(userID, offset)
 		c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Timezone: %s", FormatUTCOffset(offset))})
 		return c.Edit(fmt.Sprintf("\u2705 Timezone: %s!", FormatUTCOffset(offset)))
+	})
+
+	b.Handle(&tele.Btn{Unique: "setwpd"}, func(c tele.Context) error {
+		data := c.Data()
+		userID := c.Sender().ID
+		log.Printf("[user=%d] setwpd=%s", userID, data)
+
+		count, err := strconv.Atoi(data)
+		if err != nil || count < 1 || count > 7 {
+			return c.Respond(&tele.CallbackResponse{Text: "Invalid value"})
+		}
+
+		database.UpdateWordsPerDay(userID, count)
+		c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("%d words/day", count)})
+		user, _ := database.GetUser(userID)
+		m := userMessages(user)
+		return c.Edit(fmt.Sprintf("\u2705 %s: *%d*", m.LabelWordsPerDay, count),
+			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	})
 
 	b.Handle(&tele.Btn{Unique: "quiz"}, func(c tele.Context) error {

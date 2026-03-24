@@ -135,6 +135,27 @@ type Messages struct {
 	LabelScheduleMedia   string
 	LabelScheduleReview  string
 
+	// Expanded word format
+	LabelSynonyms    string
+	LabelAntonyms    string
+	LabelReviewTime  string
+
+	// Quiz types
+	LabelClozeQuiz       string
+	LabelCollocationQuiz string
+	LabelTrueFalse       string
+	LabelTrue            string
+	LabelFalse           string
+	QuizClozeQuestion    func(sentence string) string
+	QuizReverseQuestion  func(definition string) string
+	QuizCollocationQuestion func(word string) string
+	QuizTrueFalseQuestion func(word, definition string) string
+
+	// Settings
+	LabelWordsPerDay     string
+	BtnWordsPerDay       string
+	LabelScheduleReviewSession string
+
 	// Add word
 	AddWordPrompt    string
 	AddWordSearching string
@@ -302,6 +323,24 @@ var MessagesEN = Messages{
 	LabelScheduleMedia:   "\U0001F3AC Media",
 	LabelScheduleReview:  "\U0001F31B Review",
 
+	LabelSynonyms:    "\U0001F504 Synonyms",
+	LabelAntonyms:    "\u2194\uFE0F Antonyms",
+	LabelReviewTime:  "\U0001F9E9 *Review time!*",
+
+	LabelClozeQuiz:       "\U0001F9E9 *Fill in the blank!*",
+	LabelCollocationQuiz: "\U0001F9E9 *What goes together?*",
+	LabelTrueFalse:       "\U0001F9E9 *True or False?*",
+	LabelTrue:            "True",
+	LabelFalse:           "False",
+	QuizClozeQuestion:    func(sentence string) string { return fmt.Sprintf("Fill in the blank:\n%s", sentence) },
+	QuizReverseQuestion:  func(definition string) string { return fmt.Sprintf("Which word means \"%s\"?", definition) },
+	QuizCollocationQuestion: func(word string) string { return fmt.Sprintf("Which phrase with \"%s\" is correct?", word) },
+	QuizTrueFalseQuestion: func(word, definition string) string { return fmt.Sprintf("Does \"%s\" mean \"%s\"?", word, definition) },
+
+	LabelWordsPerDay:     "Words per day",
+	BtnWordsPerDay:       "\U0001F4DA Words/day",
+	LabelScheduleReviewSession: "\U0001F9E9 Review",
+
 	AddWordPrompt:    "Type the English word you want to add:",
 	AddWordSearching: "\U0001F50D Looking up the word...",
 	AddWordNotFound:  "\u274C Word not found. Check the spelling and try again.",
@@ -467,6 +506,24 @@ var MessagesRU = Messages{
 	LabelScheduleMedia:   "\U0001F3AC Медиа",
 	LabelScheduleReview:  "\U0001F31B Обзор",
 
+	LabelSynonyms:    "\U0001F504 Синонимы",
+	LabelAntonyms:    "\u2194\uFE0F Антонимы",
+	LabelReviewTime:  "\U0001F9E9 *Время повторения!*",
+
+	LabelClozeQuiz:       "\U0001F9E9 *Заполни пропуск!*",
+	LabelCollocationQuiz: "\U0001F9E9 *Что сочетается?*",
+	LabelTrueFalse:       "\U0001F9E9 *Верно или нет?*",
+	LabelTrue:            "Верно",
+	LabelFalse:           "Неверно",
+	QuizClozeQuestion:    func(sentence string) string { return fmt.Sprintf("Заполни пропуск:\n%s", sentence) },
+	QuizReverseQuestion:  func(definition string) string { return fmt.Sprintf("Какое слово означает \"%s\"?", definition) },
+	QuizCollocationQuestion: func(word string) string { return fmt.Sprintf("Какая фраза с \"%s\" правильная?", word) },
+	QuizTrueFalseQuestion: func(word, definition string) string { return fmt.Sprintf("\"%s\" означает \"%s\"?", word, definition) },
+
+	LabelWordsPerDay:     "Слов в день",
+	BtnWordsPerDay:       "\U0001F4DA Слов/день",
+	LabelScheduleReviewSession: "\U0001F9E9 Повторение",
+
 	AddWordPrompt:    "Напиши английское слово которое хочешь добавить:",
 	AddWordSearching: "\U0001F50D Ищу слово...",
 	AddWordNotFound:  "\u274C Слово не найдено. Проверь правописание и попробуй ещё раз.",
@@ -631,6 +688,24 @@ var MessagesKK = Messages{
 	LabelScheduleWriting: "\u270D\uFE0F Жазу",
 	LabelScheduleMedia:   "\U0001F3AC Медиа",
 	LabelScheduleReview:  "\U0001F31B Қорытынды",
+
+	LabelSynonyms:    "\U0001F504 Синонимдер",
+	LabelAntonyms:    "\u2194\uFE0F Антонимдер",
+	LabelReviewTime:  "\U0001F9E9 *Қайталау уақыты!*",
+
+	LabelClozeQuiz:       "\U0001F9E9 *Бос орынды толтыр!*",
+	LabelCollocationQuiz: "\U0001F9E9 *Не сәйкес келеді?*",
+	LabelTrueFalse:       "\U0001F9E9 *Дұрыс па, бұрыс па?*",
+	LabelTrue:            "Дұрыс",
+	LabelFalse:           "Бұрыс",
+	QuizClozeQuestion:    func(sentence string) string { return fmt.Sprintf("Бос орынды толтыр:\n%s", sentence) },
+	QuizReverseQuestion:  func(definition string) string { return fmt.Sprintf("Қай сөз \"%s\" дегенді білдіреді?", definition) },
+	QuizCollocationQuestion: func(word string) string { return fmt.Sprintf("\"%s\" қай сөз тіркесі дұрыс?", word) },
+	QuizTrueFalseQuestion: func(word, definition string) string { return fmt.Sprintf("\"%s\" — \"%s\" дегенді білдіре ме?", word, definition) },
+
+	LabelWordsPerDay:     "Күніне сөз",
+	BtnWordsPerDay:       "\U0001F4DA Сөз/күн",
+	LabelScheduleReviewSession: "\U0001F9E9 Қайталау",
 
 	AddWordPrompt:    "Қосқың келетін ағылшын сөзін жаз:",
 	AddWordSearching: "\U0001F50D Сөзді іздеп жатырмын...",

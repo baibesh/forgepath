@@ -236,6 +236,9 @@ type WordInfo struct {
 	Example      string
 	Collocations string
 	Construction string
+	Synonyms     string
+	Antonyms     string
+	Examples     string
 }
 
 func (o *OpenAIClient) LookupWord(word, userLanguage string) (*WordInfo, error) {
@@ -252,8 +255,11 @@ Return EXACTLY this JSON format, no extra text:
 {
   "definition": "short translation/definition in %s (1-3 words)",
   "example": "one natural example sentence in English using this word",
+  "examples": "two more example sentences in different contexts, separated by |",
   "collocations": "3-4 common collocations, comma separated",
-  "construction": "grammar pattern, e.g. 'verb + noun' or 'adjective + about'"
+  "construction": "grammar pattern, e.g. 'verb + noun' or 'adjective + about'",
+  "synonyms": "2-3 synonyms, comma separated",
+  "antonyms": "1-2 antonyms, comma separated (empty string if none)"
 }
 
 If the word doesn't exist or is not English, return:
@@ -265,7 +271,6 @@ If the word doesn't exist or is not English, return:
 	}
 
 	text = strings.TrimSpace(text)
-	// Remove markdown code fences if present
 	text = strings.TrimPrefix(text, "```json")
 	text = strings.TrimPrefix(text, "```")
 	text = strings.TrimSuffix(text, "```")
@@ -274,8 +279,11 @@ If the word doesn't exist or is not English, return:
 	var parsed struct {
 		Definition   string `json:"definition"`
 		Example      string `json:"example"`
+		Examples     string `json:"examples"`
 		Collocations string `json:"collocations"`
 		Construction string `json:"construction"`
+		Synonyms     string `json:"synonyms"`
+		Antonyms     string `json:"antonyms"`
 		Error        string `json:"error"`
 	}
 
@@ -297,7 +305,143 @@ If the word doesn't exist or is not English, return:
 		Example:      parsed.Example,
 		Collocations: parsed.Collocations,
 		Construction: parsed.Construction,
+		Synonyms:     parsed.Synonyms,
+		Antonyms:     parsed.Antonyms,
+		Examples:     parsed.Examples,
 	}, nil
+}
+
+// EnrichWord generates extra context for an existing word missing synonyms/examples.
+func (o *OpenAIClient) EnrichWord(word, definition, userLanguage string) (synonyms, antonyms, examples string, err error) {
+	if o == nil {
+		return "", "", "", fmt.Errorf("OpenAI client not configured")
+	}
+
+	uiLang := uiLangName(userLanguage)
+
+	prompt := fmt.Sprintf(`For the English word "%s" (meaning: %s), the user speaks %s.
+Return EXACTLY this JSON, no extra text:
+{
+  "synonyms": "2-3 synonyms, comma separated",
+  "antonyms": "1-2 antonyms, comma separated (empty string if none)",
+  "examples": "two example sentences in different contexts, separated by |"
+}`, word, definition, uiLang)
+
+	text, err := o.complete(prompt)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	text = strings.TrimSpace(text)
+	text = strings.TrimPrefix(text, "```json")
+	text = strings.TrimPrefix(text, "```")
+	text = strings.TrimSuffix(text, "```")
+	text = strings.TrimSpace(text)
+
+	var parsed struct {
+		Synonyms string `json:"synonyms"`
+		Antonyms string `json:"antonyms"`
+		Examples string `json:"examples"`
+	}
+
+	if err := json.Unmarshal([]byte(text), &parsed); err != nil {
+		return "", "", "", fmt.Errorf("could not parse enrichment")
+	}
+
+	return parsed.Synonyms, parsed.Antonyms, parsed.Examples, nil
+}
+
+// GenerateClozeOptions generates a cloze sentence and wrong word options for a quiz.
+func (o *OpenAIClient) GenerateClozeOptions(word, definition, language string) (sentence string, wrongWords []string, err error) {
+	if o == nil {
+		return "", nil, fmt.Errorf("OpenAI client not configured")
+	}
+
+	prompt := fmt.Sprintf(`Create a fill-in-the-blank quiz for the English word "%s" (meaning: %s).
+Return EXACTLY this JSON, no extra text:
+{
+  "sentence": "A natural sentence with ___ where the word should go",
+  "wrong_words": ["wrong1", "wrong2", "wrong3"]
+}
+The wrong words should be plausible but incorrect alternatives at a similar level.
+Keep the sentence simple (A2-B1 level).`, word, definition)
+
+	text, err := o.complete(prompt)
+	if err != nil {
+		return "", nil, err
+	}
+
+	text = strings.TrimSpace(text)
+	text = strings.TrimPrefix(text, "```json")
+	text = strings.TrimPrefix(text, "```")
+	text = strings.TrimSuffix(text, "```")
+	text = strings.TrimSpace(text)
+
+	var parsed struct {
+		Sentence   string   `json:"sentence"`
+		WrongWords []string `json:"wrong_words"`
+	}
+
+	if err := json.Unmarshal([]byte(text), &parsed); err != nil {
+		return "", nil, fmt.Errorf("could not parse cloze")
+	}
+
+	if parsed.Sentence == "" || len(parsed.WrongWords) < 3 {
+		return "", nil, fmt.Errorf("incomplete cloze data")
+	}
+
+	return parsed.Sentence, parsed.WrongWords[:3], nil
+}
+
+// GenerateCollocationQuiz generates a collocation quiz for a word.
+func (o *OpenAIClient) GenerateCollocationQuiz(word, collocations, language string) (question string, options []string, correctIdx int, err error) {
+	if o == nil {
+		return "", nil, 0, fmt.Errorf("OpenAI client not configured")
+	}
+
+	uiLang := uiLangName(language)
+
+	prompt := fmt.Sprintf(`Create a collocation quiz for the English word "%s".
+Known collocations: %s
+The user speaks %s.
+
+Return EXACTLY this JSON, no extra text:
+{
+  "question": "Which phrase is correct?",
+  "correct": "one correct collocation with the word",
+  "wrong": ["wrong collocation 1", "wrong collocation 2", "wrong collocation 3"]
+}
+Wrong options should use the word but in unnatural combinations.`, word, collocations, uiLang)
+
+	text, err := o.complete(prompt)
+	if err != nil {
+		return "", nil, 0, err
+	}
+
+	text = strings.TrimSpace(text)
+	text = strings.TrimPrefix(text, "```json")
+	text = strings.TrimPrefix(text, "```")
+	text = strings.TrimSuffix(text, "```")
+	text = strings.TrimSpace(text)
+
+	var parsed struct {
+		Question string   `json:"question"`
+		Correct  string   `json:"correct"`
+		Wrong    []string `json:"wrong"`
+	}
+
+	if err := json.Unmarshal([]byte(text), &parsed); err != nil {
+		return "", nil, 0, fmt.Errorf("could not parse collocation quiz")
+	}
+
+	if parsed.Correct == "" || len(parsed.Wrong) < 3 {
+		return "", nil, 0, fmt.Errorf("incomplete collocation data")
+	}
+
+	options = []string{parsed.Correct}
+	options = append(options, parsed.Wrong[:3]...)
+
+	return parsed.Question, options, 0, nil
 }
 
 func defaultQuizOptions(definition, language string) []string {

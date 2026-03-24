@@ -22,7 +22,7 @@ func Calculate(repetitions int, intervalDays int, easeFactor float64, score int)
 	case 0:
 		newInterval = 1
 	case 1:
-		newInterval = 3
+		newInterval = 6
 	default:
 		newInterval = int(math.Round(float64(intervalDays) * easeFactor))
 	}
