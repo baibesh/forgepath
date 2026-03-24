@@ -86,7 +86,7 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 
 		user, _ = database.GetUser(userID)
 		if user != nil {
-			word, err := database.GetRandomUnseen(userID, user.Level, user.Language)
+			word, err := database.GetRandomUnseen(userID, user.Level, user.TargetLanguage)
 			if err == nil {
 				grammar, _ := database.GetCurrentGrammarFocus(userID)
 				database.MarkWordSeen(userID, word.ID)
@@ -125,6 +125,9 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		case "wordsperday":
 			return c.Edit(fmt.Sprintf("%s (%s: *%d*):", m.BtnWordsPerDay, m.LabelWordsPerDay, user.WordsPerDay),
 				&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: WordsPerDayKeyboard()})
+		case "targetlang":
+			return c.Edit(fmt.Sprintf("%s (%s):", m.BtnTargetLang, content.LanguageName(user.TargetLanguage)),
+				&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: TargetLanguageKeyboard()})
 		}
 		return nil
 	})
@@ -184,6 +187,23 @@ func RegisterCallbacks(b *tele.Bot, database *db.DB, openaiClient *ai.OpenAIClie
 		database.UpdateUserTimezone(userID, offset)
 		c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Timezone: %s", FormatUTCOffset(offset))})
 		return c.Edit(fmt.Sprintf("\u2705 Timezone: %s!", FormatUTCOffset(offset)))
+	})
+
+	b.Handle(&tele.Btn{Unique: "settarget"}, func(c tele.Context) error {
+		data := c.Data()
+		userID := c.Sender().ID
+		log.Printf("[user=%d] settarget=%s", userID, data)
+
+		validLangs := map[string]bool{"en": true, "de": true}
+		if !validLangs[data] {
+			return c.Respond(&tele.CallbackResponse{Text: "Invalid language"})
+		}
+
+		database.UpdateTargetLanguage(userID, data)
+		c.Respond(&tele.CallbackResponse{Text: "Target language updated!"})
+		langName := content.LanguageName(data)
+		return c.Edit(fmt.Sprintf("\u2705 Learning: *%s*!", langName),
+			&tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	})
 
 	b.Handle(&tele.Btn{Unique: "setwpd"}, func(c tele.Context) error {

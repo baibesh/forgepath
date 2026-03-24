@@ -108,7 +108,7 @@ func handleWord(c tele.Context, database *db.DB, openaiClient *ai.OpenAIClient) 
 
 	var lastWord *db.Word
 	for i := 0; i < count; i++ {
-		word, err := database.GetRandomUnseen(user.ID, user.Level, user.Language)
+		word, err := database.GetRandomUnseen(user.ID, user.Level, user.TargetLanguage)
 		if err != nil {
 			if i == 0 {
 				return c.Send(m.AllWordsLearned)
@@ -465,9 +465,9 @@ func handleWrite(c tele.Context, database *db.DB) error {
 	}
 
 	grammar, _ := database.GetCurrentGrammarFocus(user.ID)
-	grammar = GrammarOrDefault(grammar, user.Language)
+	grammar = GrammarOrDefault(grammar, user.TargetLanguage)
 
-	topic := content.RandomTopic("en") // topics should always be in the target language (English)
+	topic := content.RandomTopic(user.TargetLanguage)
 
 	database.SetState(user.ID, "waiting_writing", map[string]string{
 		"topic":         topic,

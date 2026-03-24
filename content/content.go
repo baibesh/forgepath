@@ -46,12 +46,27 @@ func RandomTopic(language string) string {
 	return topics[rand.Intn(len(topics))]
 }
 
+var topicsDE = []string{
+	"Was hast du letztes Wochenende gemacht?",
+	"Beschreibe deinen Morgen.",
+	"Erzähle von deinem Lieblingsfilm.",
+	"Was möchtest du gerne lernen?",
+	"Beschreibe eine Person, die du bewunderst.",
+	"Was hast du gestern gegessen?",
+	"Erzähle von deiner besten Reise.",
+	"Was macht dich glücklich?",
+	"Beschreibe deinen Arbeitsplatz.",
+	"Was sind deine Pläne für diese Woche?",
+}
+
 func GetTopics(language string) []string {
 	switch language {
 	case "ru":
 		return topicsRU
 	case "kk":
 		return topicsKK
+	case "de":
+		return topicsDE
 	default:
 		return topicsEN
 	}
@@ -63,6 +78,8 @@ func LanguageName(code string) string {
 		return "Русский"
 	case "kk":
 		return "Қазақша"
+	case "de":
+		return "Deutsch"
 	default:
 		return "English"
 	}
@@ -74,6 +91,8 @@ func LanguageFlag(code string) string {
 		return "\U0001F1F7\U0001F1FA"
 	case "kk":
 		return "\U0001F1F0\U0001F1FF"
+	case "de":
+		return "\U0001F1E9\U0001F1EA"
 	default:
 		return "\U0001F1EC\U0001F1E7"
 	}

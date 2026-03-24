@@ -119,7 +119,7 @@ func (j *Jobs) sendWordsOfDay(user db.User) {
 	sentCount := 0
 
 	for i := 0; i < count; i++ {
-		word, err := j.db.GetRandomUnseen(user.ID, user.Level, user.Language)
+		word, err := j.db.GetRandomUnseen(user.ID, user.Level, user.TargetLanguage)
 		if err != nil {
 			if i == 0 {
 				log.Printf("[cron][user=%d] no unseen words: %v", user.ID, err)
@@ -184,9 +184,9 @@ func (j *Jobs) sendWritingPrompt(user db.User) {
 	}
 
 	grammar, _ := j.db.GetCurrentGrammarFocus(user.ID)
-	grammar = bot.GrammarOrDefault(grammar, user.Language)
+	grammar = bot.GrammarOrDefault(grammar, user.TargetLanguage)
 
-	topic := content.RandomTopic("en") // topics should always be in the target language (English)
+	topic := content.RandomTopic(user.TargetLanguage)
 
 	j.db.SetState(user.ID, "waiting_writing", map[string]string{
 		"topic":         topic,
@@ -215,7 +215,7 @@ func (j *Jobs) sendMediaRecommendation(user db.User) {
 	keywords, _ := j.openai.SuggestMediaKeywords(grammarFocus, todayWord, user.Level)
 	log.Printf("[cron][user=%d] media keywords: %v", user.ID, keywords)
 
-	media, err := j.db.SearchMedia(user.ID, user.Level, user.Language, keywords)
+	media, err := j.db.SearchMedia(user.ID, user.Level, user.TargetLanguage, keywords)
 	if err != nil {
 		log.Printf("[cron][user=%d] no media: %v", user.ID, err)
 		return
@@ -231,7 +231,7 @@ func (j *Jobs) sendMediaRecommendation(user db.User) {
 		&tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: bot.MediaDoneKeyboard(media.ID, user.Language)})
 	if sendErr != nil {
 		log.Printf("[cron][user=%d] send media error, trying fallback: %v", user.ID, sendErr)
-		fallback, err := j.db.GetUnseenMedia(user.ID, user.Level, user.Language)
+		fallback, err := j.db.GetUnseenMedia(user.ID, user.Level, user.TargetLanguage)
 		if err == nil && fallback.ID != media.ID {
 			j.db.MarkMediaSent(user.ID, fallback.ID)
 			_, retryErr := j.bot.Send(recipient,

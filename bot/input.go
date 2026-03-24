@@ -176,7 +176,7 @@ func handleOnboardingTzCustom(c tele.Context, database *db.DB, openaiClient *ai.
 
 	user, _ = database.GetUser(userID)
 	if user != nil {
-		word, err := database.GetRandomUnseen(userID, user.Level, user.Language)
+		word, err := database.GetRandomUnseen(userID, user.Level, user.TargetLanguage)
 		if err == nil {
 			grammar, _ := database.GetCurrentGrammarFocus(userID)
 			database.MarkWordSeen(userID, word.ID)

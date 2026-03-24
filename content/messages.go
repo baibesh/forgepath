@@ -154,6 +154,7 @@ type Messages struct {
 	// Settings
 	LabelWordsPerDay     string
 	BtnWordsPerDay       string
+	BtnTargetLang        string
 	LabelScheduleReviewSession string
 
 	// Add word
@@ -339,6 +340,7 @@ var MessagesEN = Messages{
 
 	LabelWordsPerDay:     "Words per day",
 	BtnWordsPerDay:       "\U0001F4DA Words/day",
+	BtnTargetLang:        "\U0001F3AF I'm learning",
 	LabelScheduleReviewSession: "\U0001F9E9 Review",
 
 	AddWordPrompt:    "Type the English word you want to add:",
@@ -522,6 +524,7 @@ var MessagesRU = Messages{
 
 	LabelWordsPerDay:     "Слов в день",
 	BtnWordsPerDay:       "\U0001F4DA Слов/день",
+	BtnTargetLang:        "\U0001F3AF Я учу",
 	LabelScheduleReviewSession: "\U0001F9E9 Повторение",
 
 	AddWordPrompt:    "Напиши английское слово которое хочешь добавить:",
@@ -705,6 +708,7 @@ var MessagesKK = Messages{
 
 	LabelWordsPerDay:     "Күніне сөз",
 	BtnWordsPerDay:       "\U0001F4DA Сөз/күн",
+	BtnTargetLang:        "\U0001F3AF Мен оқимын",
 	LabelScheduleReviewSession: "\U0001F9E9 Қайталау",
 
 	AddWordPrompt:    "Қосқың келетін ағылшын сөзін жаз:",

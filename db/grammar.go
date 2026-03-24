@@ -16,13 +16,13 @@ func (d *DB) GetGrammarWeek(weekNum int, language string) (*GrammarWeek, error) 
 
 func (d *DB) GetCurrentGrammarFocus(userID int64) (*GrammarWeek, error) {
 	var g GrammarWeek
-	// Always fetch English grammar (the target learning language), not the UI language
+	// Use target_language (what user is learning), not language (UI language)
 	err := d.Pool.QueryRow(context.Background(),
 		`SELECT gw.week_num, gw.family, gw.focus, gw.tense_name, gw.anchor, gw.markers, gw.formula, gw.example,
 		        COALESCE(gw.language,'en')
 		 FROM users u
 		 JOIN grammar_weeks gw ON gw.week_num = COALESCE(u.current_grammar_week, 1)
-		                       AND COALESCE(gw.language,'en') = 'en'
+		                       AND COALESCE(gw.language,'en') = COALESCE(u.target_language,'en')
 		 WHERE u.id = $1`, userID,
 	).Scan(&g.WeekNum, &g.Family, &g.Focus, &g.TenseName, &g.Anchor, &g.Markers, &g.Formula, &g.Example, &g.Language)
 	if err != nil {

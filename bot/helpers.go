@@ -45,6 +45,13 @@ func userLang(user *db.User) string {
 	return "en"
 }
 
+func userTargetLang(user *db.User) string {
+	if user != nil && user.TargetLanguage != "" {
+		return user.TargetLanguage
+	}
+	return "en"
+}
+
 func userMessages(user *db.User) *content.Messages {
 	return content.GetMessages(userLang(user))
 }

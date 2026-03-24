@@ -26,10 +26,8 @@ func NewOpenAIClient(apiKey string) *OpenAIClient {
 
 func langFullName(code string) string {
 	switch code {
-	case "ru":
-		return "English"
-	case "kk":
-		return "English"
+	case "de":
+		return "German"
 	default:
 		return "English"
 	}

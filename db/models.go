@@ -22,6 +22,7 @@ type User struct {
 	TzOffset           int
 	Level              string
 	Language           string
+	TargetLanguage     string
 	Active             bool
 	Onboarded          bool
 	SkipCount          int

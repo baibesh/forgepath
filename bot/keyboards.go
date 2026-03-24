@@ -95,6 +95,18 @@ func SettingsKeyboard(lang string) *tele.ReplyMarkup {
 		),
 		menu.Row(
 			menu.Data(m.BtnWordsPerDay, "settings", "wordsperday"),
+			menu.Data(m.BtnTargetLang, "settings", "targetlang"),
+		),
+	)
+	return menu
+}
+
+func TargetLanguageKeyboard() *tele.ReplyMarkup {
+	menu := &tele.ReplyMarkup{}
+	menu.Inline(
+		menu.Row(
+			menu.Data("\U0001F1EC\U0001F1E7 English", "settarget", "en"),
+			menu.Data("\U0001F1E9\U0001F1EA Deutsch", "settarget", "de"),
 		),
 	)
 	return menu
